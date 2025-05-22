@@ -22,6 +22,8 @@ dependencies:
   flutter_native_splash: ^2.3.9
   google_fonts: ^5.1.0
   shared_preferences: ^2.5.3
+  provider: ^6.0.5
+  cached_network_image: ^3.3.0
 
 
 

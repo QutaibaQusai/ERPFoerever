@@ -1,5 +1,5 @@
 // lib/main.dart
-import 'package:ERPForever/pages/dynamic_theme.dart';
+import 'package:ERPForever/themes/dynamic_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ERPForever/services/config_service.dart';

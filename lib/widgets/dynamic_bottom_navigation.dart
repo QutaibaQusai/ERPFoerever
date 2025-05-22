@@ -5,6 +5,7 @@ import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/webview_service.dart';
 import 'package:ERPForever/widgets/dynamic_navigation_icon.dart';
+import 'package:ERPForever/widgets/dynamic_icon.dart';
 
 class DynamicBottomNavigation extends StatelessWidget {
   final int selectedIndex;
@@ -154,10 +155,7 @@ class DynamicBottomNavigation extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: _buildActionButtons(context, config),
-            ),
+            _buildSheetActionsGrid(context, config, isDarkMode),
             const SizedBox(height: 30),
             GestureDetector(
               onTap: () => Navigator.pop(context),
@@ -181,47 +179,81 @@ class DynamicBottomNavigation extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildActionButtons(BuildContext context, config) {
-    // Take first 3 sheet icons to match original 3-button design
-    final itemsToShow = config.sheetIcons.take(3).toList();
+  Widget _buildSheetActionsGrid(BuildContext context, config, bool isDarkMode) {
+    final sheetIcons = config.sheetIcons;
     
-    return itemsToShow.map<Widget>((item) => 
-      _buildActionButton(
-        item.title,
-        _getIconForTitle(item.title),
-        _getColorForTitle(item.title),
-        () {
-          Navigator.pop(context);
-          WebViewService().navigate(
-            context,
-            url: item.link,
-            linkType: item.linkType,
-            title: item.title,
-          );
-        },
-      ),
-    ).toList();
+    // Create rows with maximum 3 items each
+    final List<Widget> rows = [];
+    for (int i = 0; i < sheetIcons.length; i += 3) {
+      final rowItems = sheetIcons.skip(i).take(3).toList();
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: rowItems.map<Widget>((item) => 
+              Expanded(
+                child: _buildDynamicActionButton(
+                  context,
+                  item,
+                  isDarkMode,
+                ),
+              ),
+            ).toList(),
+          ),
+        ),
+      );
+    }
+    
+    return Column(children: rows);
   }
 
-  Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildDynamicActionButton(BuildContext context, item, bool isDarkMode) {
     return Column(
       children: [
         GestureDetector(
-          onTap: onTap,
+          onTap: () {
+            Navigator.pop(context);
+            WebViewService().navigate(
+              context,
+              url: item.link,
+              linkType: item.linkType,
+              title: item.title,
+            );
+          },
           child: Container(
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
+              color: _getColorForTitle(item.title).withOpacity(0.2),
               borderRadius: BorderRadius.circular(15),
             ),
-            child: Icon(icon, color: color, size: 28),
+            child: Center(
+              child: DynamicIcon(
+                iconUrl: item.iconSolid, // Use solid icon for buttons
+                size: 28,
+                color: _getColorForTitle(item.title),
+                showLoading: false,
+                fallbackIcon: Icon(
+                  _getIconForTitle(item.title),
+                  color: _getColorForTitle(item.title),
+                  size: 28,
+                ),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w500),
+          item.title,
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 12,
+            color: isDarkMode ? Colors.white : Colors.black,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
     );
@@ -239,8 +271,10 @@ class DynamicBottomNavigation extends StatelessWidget {
       case 'leave':
       case 'sheet third':
         return FluentIcons.weather_partly_cloudy_day_16_regular;
-      default:
+      case 'sheet fourth':
         return FluentIcons.apps_16_regular;
+      default:
+        return FluentIcons.circle_16_regular;
     }
   }
 
@@ -256,8 +290,10 @@ class DynamicBottomNavigation extends StatelessWidget {
       case 'leave':
       case 'sheet third':
         return Colors.purple;
-      default:
+      case 'sheet fourth':
         return Colors.orange;
+      default:
+        return Colors.grey;
     }
   }
 }

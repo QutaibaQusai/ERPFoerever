@@ -5,9 +5,11 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/webview_service.dart';
 import 'package:ERPForever/services/webview_controller_manager.dart';
+import 'package:ERPForever/services/theme_service.dart';
 import 'package:ERPForever/widgets/dynamic_bottom_navigation.dart';
 import 'package:ERPForever/widgets/dynamic_app_bar.dart';
 import 'package:ERPForever/widgets/loading_widget.dart';
+import 'package:ERPForever/pages/barcode_scanner_page.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -20,7 +22,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
   late ConfigService _configService;
   late WebViewControllerManager _controllerManager;
-  
+
   final Map<int, bool> _loadingStates = {};
 
   @override
@@ -28,7 +30,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     super.initState();
     _configService = ConfigService();
     _controllerManager = WebViewControllerManager();
-    
+
     _initializeLoadingStates();
   }
 
@@ -59,11 +61,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red[400],
-                  ),
+                  Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
                   const SizedBox(height: 16),
                   Text(
                     'Configuration Error',
@@ -102,16 +100,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         selectedIndex: _selectedIndex,
         onItemTapped: _onItemTapped,
       ),
- floatingActionButton: null, // Remove separate FAB
-
+      floatingActionButton: null, // Remove separate FAB
     );
   }
 
   Widget _buildBody(config) {
     if (config.mainIcons.isEmpty) {
-      return const Center(
-        child: Text('No navigation items configured'),
-      );
+      return const Center(child: Text('No navigation items configured'));
     }
 
     return IndexedStack(
@@ -125,9 +120,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   Widget _buildTabContent(int index, mainIcon) {
     if (mainIcon.linkType == 'sheet_webview') {
-      return const Center(
-        child: Text('This tab opens as a sheet'),
-      );
+      return const Center(child: Text('This tab opens as a sheet'));
     }
 
     return Stack(
@@ -139,8 +132,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildWebView(int index, String url) {
-    final controller = _controllerManager.getController(index, url);
-    
+    // Pass context to controller manager for theme handling
+    final controller = _controllerManager.getController(index, url, context);
+
     controller.setNavigationDelegate(
       NavigationDelegate(
         onPageStarted: (String url) {
@@ -170,9 +164,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint("Navigation request: ${request.url}");
 
+    // Theme changes are now handled in WebViewService
     if (request.url.startsWith('dark-mode://') ||
         request.url.startsWith('light-mode://') ||
         request.url.startsWith('system-mode://')) {
+      _handleThemeChangeRequest(request.url);
       return NavigationDecision.prevent;
     }
 
@@ -186,6 +182,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       return NavigationDecision.prevent;
     }
 
+    // Handle barcode scanning
     if (request.url.contains('barcode') || request.url.contains('scan')) {
       _handleBarcodeScanning(request.url);
       return NavigationDecision.prevent;
@@ -194,9 +191,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return NavigationDecision.navigate;
   }
 
+  void _handleThemeChangeRequest(String url) {
+    String themeMode = 'system';
+
+    if (url.startsWith('dark-mode://')) {
+      themeMode = 'dark';
+    } else if (url.startsWith('light-mode://')) {
+      themeMode = 'light';
+    } else if (url.startsWith('system-mode://')) {
+      themeMode = 'system';
+    }
+
+    // Update theme using ThemeService
+    final themeService = Provider.of<ThemeService>(context, listen: false);
+    themeService.updateThemeMode(themeMode);
+  }
+
   void _handleNewWebNavigation(String url) {
     String targetUrl = 'https://www.erpforever.com/mobile/test';
-    
+
     if (url.contains('?')) {
       try {
         Uri uri = Uri.parse(url.replaceFirst('new-web://', 'https://'));
@@ -218,7 +231,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _handleSheetNavigation(String url) {
     String targetUrl = 'https://mujeer.com';
-    
+
     if (url.contains('?')) {
       try {
         Uri uri = Uri.parse(url.replaceFirst('new-sheet://', 'https://'));
@@ -240,6 +253,58 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _handleBarcodeScanning(String url) {
     debugPrint("Barcode scanning triggered: $url");
+
+    // Determine if it's continuous scanning
+    bool isContinuous =
+        url.contains('continuous') || url.contains('Continuous');
+
+    // Navigate to barcode scanner
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder:
+            (context) => BarcodeScannerPage(
+              isContinuous: isContinuous,
+              onBarcodeScanned: (String barcode) {
+                _handleBarcodeResult(barcode);
+              },
+            ),
+      ),
+    );
+  }
+
+  void _handleBarcodeResult(String barcode) {
+    debugPrint("Barcode scanned: $barcode");
+
+    // Send result back to current WebView
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
+
+    controller.runJavaScript('''
+      if (typeof getBarcode === 'function') {
+        getBarcode("$barcode");
+        console.log("Called getBarcode() with: $barcode");
+      } else if (typeof window.handleBarcodeResult === 'function') {
+        window.handleBarcodeResult("$barcode");
+        console.log("Called handleBarcodeResult with: $barcode");
+      } else {
+        // Fallback: fill first text input
+        var inputs = document.querySelectorAll('input[type="text"]');
+        if(inputs.length > 0) {
+          inputs[0].value = "$barcode";
+          inputs[0].dispatchEvent(new Event('input'));
+          console.log("Filled input field with: $barcode");
+        }
+        
+        // Trigger custom event
+        var event = new CustomEvent('barcodeScanned', { detail: { result: "$barcode" } });
+        document.dispatchEvent(event);
+      }
+    ''');
   }
 
   void _onItemTapped(int index) {
@@ -247,7 +312,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (config == null) return;
 
     final item = config.mainIcons[index];
-    
+
     if (item.linkType == 'sheet_webview') {
       WebViewService().navigate(
         context,
@@ -261,6 +326,4 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       });
     }
   }
-
-
 }

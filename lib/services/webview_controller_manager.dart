@@ -1,4 +1,5 @@
 // lib/services/webview_controller_manager.dart
+import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:ERPForever/services/webview_service.dart';
 
@@ -10,10 +11,14 @@ class WebViewControllerManager {
   final Map<int, WebViewController> _controllers = {};
   final Map<int, bool> _loadingStates = {};
 
-  WebViewController getController(int index, String url) {
+  WebViewController getController(int index, String url, [BuildContext? context]) {
     if (!_controllers.containsKey(index)) {
-      _controllers[index] = WebViewService().createController(url);
+      // Pass context to the WebViewService for theme handling
+      _controllers[index] = WebViewService().createController(url, context);
       _loadingStates[index] = true;
+    } else if (context != null) {
+      // Update context if controller already exists
+      WebViewService().updateContext(context);
     }
     return _controllers[index]!;
   }

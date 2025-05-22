@@ -23,7 +23,7 @@ class DynamicBottomNavigation extends StatelessWidget {
     if (config == null) return const SizedBox.shrink();
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    
+
     return BottomAppBar(
       color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
       elevation: 8,
@@ -36,15 +36,18 @@ class DynamicBottomNavigation extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildNavigationItems(BuildContext context, config, bool isDarkMode) {
+  List<Widget> _buildNavigationItems(
+    BuildContext context,
+    config,
+    bool isDarkMode,
+  ) {
     List<Widget> items = [];
-    
+
     for (int i = 0; i < config.mainIcons.length; i++) {
-      // Insert FAB in the middle (index 2) if we have sheet icons
       if (i == 2 && config.sheetIcons.isNotEmpty) {
         items.add(_buildCenterAddButton(context, isDarkMode));
       }
-      
+
       items.add(_buildNavItem(context, i, config.mainIcons[i], isDarkMode));
     }
 
@@ -53,10 +56,11 @@ class DynamicBottomNavigation extends StatelessWidget {
 
   Widget _buildNavItem(BuildContext context, int index, item, bool isDarkMode) {
     final isSelected = selectedIndex == index;
-    final Color iconColor = isSelected 
-        ? Colors.blue
-        : (isDarkMode ? Colors.grey[400]! : Colors.grey);
-    
+    final Color iconColor =
+        isSelected
+            ? Colors.blue
+            : (isDarkMode ? Colors.grey[400]! : Colors.grey);
+
     return Expanded(
       child: InkWell(
         splashColor: Colors.transparent,
@@ -143,45 +147,46 @@ class DynamicBottomNavigation extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: isDarkMode ? Colors.black : Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 20),
-            _buildSheetActionsGrid(context, config, isDarkMode),
-            const SizedBox(height: 30),
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: isDarkMode ? Colors.white : Colors.black,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.close,
-                  color: isDarkMode ? Colors.black : Colors.white,
-                ),
+      builder:
+          (context) => Container(
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.black : Colors.white,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
               ),
             ),
-            const SizedBox(height: 30),
-          ],
-        ),
-      ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 20),
+                _buildSheetActionsGrid(context, config, isDarkMode),
+                const SizedBox(height: 30),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.white : Colors.black,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.close,
+                      color: isDarkMode ? Colors.black : Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
+              ],
+            ),
+          ),
     );
   }
 
   Widget _buildSheetActionsGrid(BuildContext context, config, bool isDarkMode) {
     final sheetIcons = config.sheetIcons;
-    
+
     // Create rows with maximum 3 items each
     final List<Widget> rows = [];
     for (int i = 0; i < sheetIcons.length; i += 3) {
@@ -191,24 +196,31 @@ class DynamicBottomNavigation extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: rowItems.map<Widget>((item) => 
-              Expanded(
-                child: _buildDynamicActionButton(
-                  context,
-                  item,
-                  isDarkMode,
-                ),
-              ),
-            ).toList(),
+            children:
+                rowItems
+                    .map<Widget>(
+                      (item) => Expanded(
+                        child: _buildDynamicActionButton(
+                          context,
+                          item,
+                          isDarkMode,
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
         ),
       );
     }
-    
+
     return Column(children: rows);
   }
 
-  Widget _buildDynamicActionButton(BuildContext context, item, bool isDarkMode) {
+  Widget _buildDynamicActionButton(
+    BuildContext context,
+    item,
+    bool isDarkMode,
+  ) {
     return Column(
       children: [
         GestureDetector(
@@ -225,18 +237,18 @@ class DynamicBottomNavigation extends StatelessWidget {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: _getColorForTitle(item.title).withOpacity(0.2),
+              color: Colors.grey.withOpacity(0.2),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Center(
               child: DynamicIcon(
-                iconUrl: item.iconSolid, // Use solid icon for buttons
+                iconUrl: item.iconSolid,
                 size: 28,
-                color: _getColorForTitle(item.title),
+                color: Colors.grey,
                 showLoading: false,
                 fallbackIcon: Icon(
                   _getIconForTitle(item.title),
-                  color: _getColorForTitle(item.title),
+                  color: Colors.grey,
                   size: 28,
                 ),
               ),
@@ -275,25 +287,6 @@ class DynamicBottomNavigation extends StatelessWidget {
         return FluentIcons.apps_16_regular;
       default:
         return FluentIcons.circle_16_regular;
-    }
-  }
-
-  Color _getColorForTitle(String title) {
-    switch (title.toLowerCase()) {
-      case 'status':
-      case 'sheet first':
-        return Colors.green;
-      case 'time log':
-      case 'timelog':
-      case 'sheet second':
-        return Colors.blue;
-      case 'leave':
-      case 'sheet third':
-        return Colors.purple;
-      case 'sheet fourth':
-        return Colors.orange;
-      default:
-        return Colors.grey;
     }
   }
 }

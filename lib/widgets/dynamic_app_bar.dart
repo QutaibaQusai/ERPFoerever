@@ -7,11 +7,7 @@ import 'package:ERPForever/widgets/header_icon_widget.dart';
 
 class DynamicAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int selectedIndex;
-  
-  const DynamicAppBar({
-    super.key,
-    required this.selectedIndex,
-  });
+  const DynamicAppBar({super.key, required this.selectedIndex});
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -29,7 +25,17 @@ class DynamicAppBar extends StatelessWidget implements PreferredSizeWidget {
 
     return AppBar(
       centerTitle: false,
-      title: _buildTitle(context, currentItem.title, titleColor),
+      title:
+          selectedIndex == 0
+              ? SizedBox(
+                height: 20,
+                child: Image.asset(
+                  isDarkMode
+                      ? "assets/erpforever-white.png"
+                      : "assets/header_icon.png",
+                ),
+              )
+              : _buildTitle(context, currentItem.title, titleColor),
       actions: _buildActions(context, currentItem),
       backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
       elevation: 0,
@@ -50,8 +56,9 @@ class DynamicAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   List<Widget> _buildActions(BuildContext context, currentItem) {
     final List<Widget> actions = [];
-    
-    if (currentItem.headerIcons != null && currentItem.headerIcons!.isNotEmpty) {
+
+    if (currentItem.headerIcons != null &&
+        currentItem.headerIcons!.isNotEmpty) {
       for (final headerIcon in currentItem.headerIcons!) {
         actions.add(
           HeaderIconWidget(
@@ -82,7 +89,7 @@ class DynamicAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   AppBar _buildDefaultAppBar(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    
+
     return AppBar(
       title: Text(
         'ERPForever',

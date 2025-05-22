@@ -1,0 +1,45 @@
+name: ERPForever
+
+description: "A new Flutter project."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.7.2 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  webview_flutter: ^4.0.0
+  font_awesome_flutter: ^10.2.1
+  fluentui_system_icons: ^1.1.229
+  flutter_launcher_icons: ^0.14.3
+  audioplayers: ^6.4.0
+  mobile_scanner: ^3.5.6  
+  flutter_native_splash: ^2.3.9
+  google_fonts: ^5.1.0
+  shared_preferences: ^2.5.3
+
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/sounds/
+
+
+
+
+flutter_launcher_icons:
+  image_path: assets/icon/icon.png
+  android: true
+  ios: true

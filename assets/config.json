@@ -14,7 +14,7 @@
       "link": "https://mobile.erpforever.com/",
       "link_type": "regular_webview",
       "header_icons": [
-        {
+        { 
           "title": "First",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
           "link": "https://erpforever.com/mobile",

@@ -27,7 +27,7 @@ class DynamicBottomNavigation extends StatelessWidget {
     return BottomAppBar(
       color: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
       elevation: 8,
-      height: 60,
+      height: 75,
       padding: EdgeInsets.zero,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,

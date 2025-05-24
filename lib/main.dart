@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/theme_service.dart';
+import 'package:ERPForever/services/auth_service.dart';
 import 'package:ERPForever/pages/main_screen.dart';
+import 'package:ERPForever/pages/login_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +14,7 @@ void main() async {
   // Initialize services
   final configService = ConfigService();
   final themeService = ThemeService();
+  final authService = AuthService();
   
   // Load configuration
   await configService.loadConfig();
@@ -19,33 +22,48 @@ void main() async {
   // Load saved theme
   final savedTheme = await themeService.getSavedThemeMode();
   
+  // Check authentication state
+  final isLoggedIn = await authService.checkAuthState();
+  
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: configService),
         ChangeNotifierProvider(create: (_) => themeService),
+        ChangeNotifierProvider.value(value: authService),
       ],
-      child: MyApp(initialThemeMode: savedTheme),
+      child: MyApp(
+        initialThemeMode: savedTheme,
+        isLoggedIn: isLoggedIn,
+      ),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
   final String initialThemeMode;
+  final bool? isLoggedIn; 
   
-  const MyApp({super.key, required this.initialThemeMode});
+  const MyApp({
+    super.key, 
+    required this.initialThemeMode,
+    this.isLoggedIn, 
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<ConfigService, ThemeService>(
-      builder: (context, configService, themeService, child) {
+    return Consumer3<ConfigService, ThemeService, AuthService>(
+      builder: (context, configService, themeService, authService, child) {
+
+        final shouldShowMainScreen = isLoggedIn ?? authService.isLoggedIn;
+        
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'ERPForever',
           themeMode: themeService.themeMode,
           theme: DynamicTheme.buildLightTheme(configService.config),
           darkTheme: DynamicTheme.buildDarkTheme(configService.config),
-          home: const MainScreen(),
+          home: shouldShowMainScreen ? const MainScreen() : const LoginPage(),
         );
       },
     );

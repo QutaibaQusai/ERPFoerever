@@ -26,9 +26,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late WebViewControllerManager _controllerManager;
 
   final Map<int, bool> _loadingStates = {};
-  final Map<int, bool> _isAtTopStates = {}; // Track if each webview is at top
-  final Map<int, bool> _isRefreshingStates = {}; // Track refresh state per tab
-  final Map<int, bool> _channelAdded = {}; // Track if JavaScript channel is added
+  final Map<int, bool> _isAtTopStates = {};
+  final Map<int, bool> _isRefreshingStates = {};
+  final Map<int, bool> _channelAdded = {};
 
   @override
   void initState() {
@@ -44,9 +44,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     if (config != null) {
       for (int i = 0; i < config.mainIcons.length; i++) {
         _loadingStates[i] = true;
-        _isAtTopStates[i] = true; // Initially at top
+        _isAtTopStates[i] = true; 
         _isRefreshingStates[i] = false;
-        _channelAdded[i] = false; // Track channel addition
+        _channelAdded[i] = false;
       }
     }
   }
@@ -141,29 +141,30 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         onRefresh: () => _refreshWebView(index),
         // Custom condition: only allow refresh when webview is at top
         child: SingleChildScrollView(
-          physics: _isAtTopStates[index] == true 
-            ? const AlwaysScrollableScrollPhysics()
-            : const NeverScrollableScrollPhysics(),
+          physics:
+              _isAtTopStates[index] == true
+                  ? const AlwaysScrollableScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
           child: SizedBox(
-            height: MediaQuery.of(context).size.height - 
-                   kToolbarHeight - 
-                   kBottomNavigationBarHeight - 
-                   MediaQuery.of(context).padding.top,
+            height:
+                MediaQuery.of(context).size.height -
+                kToolbarHeight -
+                kBottomNavigationBarHeight -
+                MediaQuery.of(context).padding.top,
             child: Stack(
               children: [
                 _buildWebView(index, mainIcon.link),
-                if (_loadingStates[index] == true || _isRefreshingStates[index] == true) 
+                if (_loadingStates[index] == true ||
+                    _isRefreshingStates[index] == true)
                   const LoadingWidget(),
                 // Custom refresh indicator when at top
-                if (_isAtTopStates[index] == true && _isRefreshingStates[index] == false)
+                if (_isAtTopStates[index] == true &&
+                    _isRefreshingStates[index] == false)
                   Positioned(
                     top: 0,
                     left: 0,
                     right: 0,
-                    child: Container(
-                      height: 2,
-                      color: Colors.transparent,
-                    ),
+                    child: Container(height: 2, color: Colors.transparent),
                   ),
               ],
             ),
@@ -174,10 +175,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _refreshWebView(int index) async {
-    if (_isRefreshingStates[index] == true) return; // Prevent multiple refreshes
-    
+    if (_isRefreshingStates[index] == true)
+      return; // Prevent multiple refreshes
+
     debugPrint('🔄 Refreshing WebView at index $index');
-    
+
     setState(() {
       _isRefreshingStates[index] = true;
     });
@@ -185,10 +187,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     try {
       final controller = _controllerManager.getController(index, '', context);
       await controller.reload();
-      
+
       // Wait for page to start loading
       await Future.delayed(const Duration(milliseconds: 800));
-      
+
       debugPrint('✅ WebView refreshed successfully');
     } catch (e) {
       debugPrint('❌ Error refreshing WebView: $e');
@@ -241,7 +243,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   void _injectScrollMonitoring(WebViewController controller, int index) {
     // FIXED: Check if channel is already added to prevent duplicate channel error
     if (_channelAdded[index] == true) {
-      debugPrint('📍 JavaScript channel already added for tab $index, skipping...');
+      debugPrint(
+        '📍 JavaScript channel already added for tab $index, skipping...',
+      );
       return;
     }
 
@@ -252,12 +256,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         onMessageReceived: (JavaScriptMessage message) {
           try {
             final isAtTop = message.message == 'true';
-            
+
             if (mounted && _isAtTopStates[index] != isAtTop) {
               setState(() {
                 _isAtTopStates[index] = isAtTop;
               });
-              debugPrint('📍 Tab $index scroll position: ${isAtTop ? "TOP" : "SCROLLED"}');
+              debugPrint(
+                '📍 Tab $index scroll position: ${isAtTop ? "TOP" : "SCROLLED"}',
+              );
             }
           } catch (e) {
             debugPrint('❌ Error parsing scroll message: $e');
@@ -312,7 +318,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       ''');
     } catch (e) {
       debugPrint('❌ Error adding JavaScript channel for tab $index: $e');
-      // Reset the flag if there was an error
       _channelAdded[index] = false;
     }
   }
@@ -320,6 +325,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint("Navigation request: ${request.url}");
 
+    // Theme requests
     if (request.url.startsWith('dark-mode://') ||
         request.url.startsWith('light-mode://') ||
         request.url.startsWith('system-mode://')) {
@@ -327,11 +333,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       return NavigationDecision.prevent;
     }
 
+    // Auth requests
     if (request.url.startsWith('logout://')) {
       _handleLogoutRequest();
       return NavigationDecision.prevent;
     }
 
+    // Location requests
+    if (request.url.startsWith('get-location://')) {
+      _handleLocationRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Contacts requests - ADD THIS
+    if (request.url.startsWith('get-contacts://')) {
+      _handleContactsRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Other navigation requests
     if (request.url.startsWith('new-web://')) {
       _handleNewWebNavigation(request.url);
       return NavigationDecision.prevent;
@@ -342,12 +362,54 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       return NavigationDecision.prevent;
     }
 
+    // Barcode requests
     if (request.url.contains('barcode') || request.url.contains('scan')) {
       _handleBarcodeScanning(request.url);
       return NavigationDecision.prevent;
     }
 
     return NavigationDecision.navigate;
+  }
+
+  void _handleContactsRequest() {
+    debugPrint('📞 Contacts requested from WebView');
+
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
+
+    controller.runJavaScript('''
+    if (window.ContactsManager && window.ContactsManager.postMessage) {
+      window.ContactsManager.postMessage('getAllContacts');
+      console.log("✅ Contacts request sent");
+    } else {
+      console.log("❌ ContactsManager not found");
+    }
+  ''');
+  }
+
+  void _handleLocationRequest() {
+    debugPrint('🌍 Location requested from WebView');
+
+    // The WebViewService will handle the actual location logic
+    // We just need to trigger it through the current controller
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
+
+    // This will trigger the location service through JavaScript
+    controller.runJavaScript('''
+      if (window.LocationManager && window.LocationManager.postMessage) {
+        window.LocationManager.postMessage('getCurrentLocation');
+        console.log("✅ Location request forwarded to LocationManager");
+      } else {
+        console.log("❌ LocationManager not found");
+      }
+    ''');
   }
 
   void _handleLogoutRequest() {
@@ -374,17 +436,14 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           ),
         );
 
-        // Navigate to login page and clear navigation stack
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => const LoginPage(),
-          ),
-          (route) => false, // Remove all previous routes
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+          (route) => false,
         );
       }
     } catch (e) {
       debugPrint('❌ Error during logout: $e');
-      
+
       // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -469,12 +528,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       context,
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (context) => BarcodeScannerPage(
-          isContinuous: isContinuous,
-          onBarcodeScanned: (String barcode) {
-            _handleBarcodeResult(barcode);
-          },
-        ),
+        builder:
+            (context) => BarcodeScannerPage(
+              isContinuous: isContinuous,
+              onBarcodeScanned: (String barcode) {
+                _handleBarcodeResult(barcode);
+              },
+            ),
       ),
     );
   }

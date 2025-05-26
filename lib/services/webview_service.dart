@@ -9,6 +9,8 @@ import 'package:ERPForever/pages/login_page.dart';
 import 'package:ERPForever/widgets/webview_sheet.dart';
 import 'package:ERPForever/services/theme_service.dart';
 import 'package:ERPForever/services/auth_service.dart';
+import 'package:ERPForever/services/location_service.dart';
+import 'package:ERPForever/services/contacts_service.dart';
 
 class WebViewService {
   static final WebViewService _instance = WebViewService._internal();
@@ -61,10 +63,12 @@ class WebViewService {
   }
 
   WebViewController createController(String url, [BuildContext? context]) {
-    // Store context for theme changes, scanner, and logout
+    debugPrint('🌐 Creating WebView controller for: $url');
+    
+    // Store context for interactions
     _currentContext = context;
     
-    // Create the controller first
+    // Create the controller
     final controller = WebViewController();
     _currentController = controller;
     
@@ -74,48 +78,57 @@ class WebViewService {
       ..addJavaScriptChannel(
         'BarcodeScanner',
         onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('Barcode message: ${message.message}');
+          debugPrint('📸 Barcode message: ${message.message}');
           _handleBarcodeRequest(message.message);
         },
       )
       ..addJavaScriptChannel(
         'ThemeManager',
         onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('Theme message: ${message.message}');
+          debugPrint('🎨 Theme message: ${message.message}');
           _handleThemeChange(message.message);
         },
       )
       ..addJavaScriptChannel(
         'AuthManager',
         onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('Auth message: ${message.message}');
+          debugPrint('🚪 Auth message: ${message.message}');
           _handleAuthRequest(message.message);
         },
       )
       ..addJavaScriptChannel(
-        'AlertManager',
+        'LocationManager',
         onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('Alert message: ${message.message}');
+          debugPrint('🌍 Location message: ${message.message}');
+          _handleLocationRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'ContactsManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📞 Contacts message: ${message.message}');
+          _handleContactsRequest(message.message);
         },
       )
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            debugPrint('Page started loading: $url');
+            debugPrint('⏳ Page started loading: $url');
           },
           onPageFinished: (String url) {
-            debugPrint('Page finished loading: $url');
+            debugPrint('✅ Page finished loading: $url');
             _injectJavaScript(controller);
           },
           onNavigationRequest: (NavigationRequest request) {
-            debugPrint('Navigation request: ${request.url}');
+            debugPrint('🔄 Navigation request: ${request.url}');
             return _handleNavigationRequest(request);
           },
           onWebResourceError: (WebResourceError error) {
-            debugPrint('Web resource error: ${error.description}');
+            debugPrint('❌ Web resource error: ${error.description}');
           },
         ),
-      );
+      )
+      ..setUserAgent('ERPForever-Flutter-App');
 
     // Load the URL
     controller.loadRequest(Uri.parse(url));
@@ -124,7 +137,9 @@ class WebViewService {
   }
 
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-    // Handle theme change requests
+    debugPrint('🔍 Handling navigation request: ${request.url}');
+    
+    // Handle theme requests
     if (request.url.startsWith('dark-mode://')) {
       _handleThemeChange('dark');
       return NavigationDecision.prevent;
@@ -134,24 +149,331 @@ class WebViewService {
     } else if (request.url.startsWith('system-mode://')) {
       _handleThemeChange('system');
       return NavigationDecision.prevent;
-    } 
-    // Handle logout requests
+    }
+    // Handle auth requests
     else if (request.url.startsWith('logout://')) {
       _handleAuthRequest('logout');
       return NavigationDecision.prevent;
     }
-    // Handle barcode scanning requests
+    // Handle location requests
+    else if (request.url.startsWith('get-location://')) {
+      _handleLocationRequest('getCurrentLocation');
+      return NavigationDecision.prevent;
+    }
+    // Handle contacts requests
+    else if (request.url.startsWith('get-contacts://')) {
+      _handleContactsRequest('getAllContacts');
+      return NavigationDecision.prevent;
+    }
+    // Handle barcode requests
     else if (request.url.contains('barcode') || request.url.contains('scan')) {
       bool isContinuous = request.url.contains('continuous');
       _handleBarcodeRequest(isContinuous ? 'scanContinuous' : 'scan');
       return NavigationDecision.prevent;
     }
-    else if (request.url.startsWith('new-web://') ||
-               request.url.startsWith('new-sheet://')) {
-      return NavigationDecision.prevent;
-    }
 
     return NavigationDecision.navigate;
+  }
+
+  /// Handle contacts requests
+  void _handleContactsRequest(String message) async {
+    if (_currentContext == null || _currentController == null) {
+      debugPrint('❌ No context or controller available for contacts request');
+      return;
+    }
+
+    debugPrint('📞 Processing contacts request...');
+    
+    try {
+      // Show loading dialog
+      _showContactsLoadingDialog();
+
+      // Get all contacts
+      Map<String, dynamic> contactsResult = await AppContactsService().getAllContacts();
+
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+
+      // Send result to WebView
+      _sendContactsToWebView(contactsResult);
+
+    } catch (e) {
+      debugPrint('❌ Error handling contacts request: $e');
+      
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+      
+      // Send error to WebView
+      _sendContactsToWebView({
+        'success': false,
+        'error': 'Failed to get contacts: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+        'contacts': []
+      });
+    }
+  }
+
+  void _showContactsLoadingDialog() {
+    if (_currentContext == null) return;
+
+    showDialog(
+      context: _currentContext!,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Loading contacts...',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _sendContactsToWebView(Map<String, dynamic> contactsData) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for contacts result');
+      return;
+    }
+
+    debugPrint('📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts');
+
+    final success = contactsData['success'] ?? false;
+    final error = (contactsData['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = contactsData['errorCode'] ?? '';
+    final totalCount = contactsData['totalCount'] ?? 0;
+
+    // Convert contacts to JSON string safely
+    String contactsJson = '[]';
+    if (contactsData['contacts'] != null) {
+      try {
+        contactsJson = contactsData['contacts'].toString().replaceAll("'", '"');
+      } catch (e) {
+        debugPrint('❌ Error converting contacts to JSON: $e');
+      }
+    }
+
+    _currentController!.runJavaScript('''
+      try {
+        console.log("📞 Contacts received: Success=$success, Count=$totalCount");
+        
+        var contactsResult = {
+          success: $success,
+          contacts: $contactsJson,
+          totalCount: $totalCount,
+          error: "$error",
+          errorCode: "$errorCode"
+        };
+        
+        // Try callback functions
+        if (typeof getContactsCallback === 'function') {
+          console.log("✅ Calling getContactsCallback()");
+          getContactsCallback($success, contactsResult.contacts, $totalCount, "$error", "$errorCode");
+        } else if (typeof window.handleContactsResult === 'function') {
+          console.log("✅ Calling window.handleContactsResult()");
+          window.handleContactsResult(contactsResult);
+        } else if (typeof handleContactsResult === 'function') {
+          console.log("✅ Calling handleContactsResult()");
+          handleContactsResult(contactsResult);
+        } else {
+          console.log("✅ Using fallback - triggering event");
+          
+          var event = new CustomEvent('contactsReceived', { detail: contactsResult });
+          document.dispatchEvent(event);
+        }
+        
+      } catch (error) {
+        console.error("❌ Error handling contacts result:", error);
+      }
+    ''');
+
+    // Show feedback to user
+    if (_currentContext != null) {
+      String message;
+      Color backgroundColor;
+      
+      if (contactsData['success']) {
+        message = 'Loaded ${contactsData['totalCount']} contacts';
+        backgroundColor = Colors.green;
+      } else {
+        message = contactsData['error'] ?? 'Failed to load contacts';
+        backgroundColor = Colors.red;
+      }
+
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: Duration(seconds: 5), // Longer duration for permission messages
+          backgroundColor: backgroundColor,
+          action: !contactsData['success'] && contactsData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+            ? SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () async {
+                  bool opened = await AppContactsService().openSettings();
+                  if (!opened) {
+                    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                      SnackBar(
+                        content: Text('Please manually open Settings > Apps > ERPForever > Permissions'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                },
+              )
+            : null,
+        ),
+      );
+    }
+  }
+
+  /// Handle location requests
+  void _handleLocationRequest(String message) async {
+    if (_currentContext == null || _currentController == null) {
+      debugPrint('❌ No context or controller available for location request');
+      return;
+    }
+
+    debugPrint('🌍 Processing location request...');
+    
+    try {
+      // Show loading dialog
+      _showLocationLoadingDialog();
+
+      Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
+
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+
+      // Send result to WebView
+      _sendLocationToWebView(locationResult);
+
+    } catch (e) {
+      debugPrint('❌ Error handling location request: $e');
+      
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+      
+      _sendLocationToWebView({
+        'success': false,
+        'error': 'Failed to get location: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR'
+      });
+    }
+  }
+
+  void _showLocationLoadingDialog() {
+    if (_currentContext == null) return;
+
+    showDialog(
+      context: _currentContext!,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Getting your location...',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _sendLocationToWebView(Map<String, dynamic> locationData) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for location result');
+      return;
+    }
+
+    debugPrint('📱 Sending location data to WebView');
+
+    final success = locationData['success'] ?? false;
+    final latitude = locationData['latitude'];
+    final longitude = locationData['longitude'];
+    final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = locationData['errorCode'] ?? '';
+
+    _currentController!.runJavaScript('''
+      try {
+        console.log("📍 Location received: Success=$success");
+        
+        var locationResult = {
+          success: $success,
+          latitude: ${latitude ?? 'null'},
+          longitude: ${longitude ?? 'null'},
+          error: "$error",
+          errorCode: "$errorCode"
+        };
+        
+        // Try callback functions
+        if (typeof getLocationCallback === 'function') {
+          console.log("✅ Calling getLocationCallback()");
+          getLocationCallback($success, ${latitude ?? 'null'}, ${longitude ?? 'null'}, "$error", "$errorCode");
+        } else if (typeof window.handleLocationResult === 'function') {
+          console.log("✅ Calling window.handleLocationResult()");
+          window.handleLocationResult(locationResult);
+        } else if (typeof handleLocationResult === 'function') {
+          console.log("✅ Calling handleLocationResult()");
+          handleLocationResult(locationResult);
+        } else {
+          console.log("✅ Using fallback - triggering event");
+          
+          var event = new CustomEvent('locationReceived', { detail: locationResult });
+          document.dispatchEvent(event);
+        }
+        
+      } catch (error) {
+        console.error("❌ Error handling location result:", error);
+      }
+    ''');
+
+    // Show feedback
+    if (_currentContext != null) {
+      String message;
+      Color backgroundColor;
+      
+      if (locationData['success']) {
+        final lat = locationData['latitude']?.toStringAsFixed(6) ?? 'Unknown';
+        final lng = locationData['longitude']?.toStringAsFixed(6) ?? 'Unknown';
+        message = 'Location: $lat, $lng';
+        backgroundColor = Colors.green;
+      } else {
+        message = locationData['error'] ?? 'Failed to get location';
+        backgroundColor = Colors.red;
+      }
+
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: Duration(seconds: 3),
+          backgroundColor: backgroundColor,
+        ),
+      );
+    }
   }
 
   void _handleAuthRequest(String message) {
@@ -161,52 +483,35 @@ class WebViewService {
     }
 
     if (message == 'logout') {
-      debugPrint('🚪 Logout requested from WebView');
       _performLogout();
     }
   }
 
   void _performLogout() async {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for logout');
-      return;
-    }
+    if (_currentContext == null) return;
 
     try {
-      // Get the AuthService and logout
       final authService = Provider.of<AuthService>(_currentContext!, listen: false);
       await authService.logout();
 
-      debugPrint('✅ User logged out successfully');
-
-      // Show feedback
-      ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
         const SnackBar(
           content: Text('Logged out successfully'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
         ),
       );
 
-      // Navigate to login page and clear navigation stack
       Navigator.of(_currentContext!).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => const LoginPage(),
-        ),
-        (route) => false, // Remove all previous routes
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (route) => false,
       );
 
     } catch (e) {
       debugPrint('❌ Error during logout: $e');
       
-      // Show error message
-      ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
         const SnackBar(
           content: Text('Error during logout'),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
           backgroundColor: Colors.red,
         ),
       );
@@ -214,14 +519,9 @@ class WebViewService {
   }
 
   void _handleBarcodeRequest(String message) {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for barcode scanning');
-      return;
-    }
+    if (_currentContext == null) return;
 
     bool isContinuous = message == 'scanContinuous';
-    
-    debugPrint('📸 Starting barcode scan - Continuous: $isContinuous');
     
     Navigator.push(
       _currentContext!,
@@ -238,78 +538,41 @@ class WebViewService {
   }
 
   void _sendBarcodeToWebView(String barcode, bool isContinuous) {
-    if (_currentController == null) {
-      debugPrint('❌ No WebView controller available for barcode result');
-      return;
-    }
+    if (_currentController == null) return;
 
-    debugPrint('📱 Sending barcode to WebView: $barcode (Continuous: $isContinuous)');
+    final escapedBarcode = barcode.replaceAll('"', '\\"');
 
-    if (isContinuous) {
-      // For continuous scanning, call getBarcodeContinuous first
-      _currentController!.runJavaScript('''
-        try {
-          if (typeof getBarcodeContinuous === 'function') {
-            getBarcodeContinuous("$barcode");
-            console.log("✅ Called getBarcodeContinuous() with: $barcode");
-          } else if (typeof getBarcode === 'function') {
-            getBarcode("$barcode");
-            console.log("✅ getBarcodeContinuous() not found, called getBarcode() with: $barcode");
-          } else if (typeof window.handleContinuousBarcodeResult === 'function') {
-            window.handleContinuousBarcodeResult("$barcode");
-            console.log("✅ Called window.handleContinuousBarcodeResult with: $barcode");
-          } else {
-            // Fallback: fill first text input
-            var inputs = document.querySelectorAll('input[type="text"]');
-            if(inputs.length > 0) {
-              inputs[0].value = "$barcode";
-              inputs[0].dispatchEvent(new Event('input'));
-              inputs[0].dispatchEvent(new Event('change'));
-              console.log("✅ Filled input field with: $barcode (continuous mode)");
-            }
-            
-            // Trigger custom event for continuous
-            var event = new CustomEvent('barcodeScanned', { 
-              detail: { result: "$barcode", continuous: true } 
-            });
-            document.dispatchEvent(event);
-            console.log("✅ Triggered continuous barcodeScanned event with: $barcode");
+    _currentController!.runJavaScript('''
+      try {
+        console.log("📸 Barcode received: $escapedBarcode");
+        
+        if (typeof getBarcode === 'function') {
+          getBarcode("$escapedBarcode");
+        } else {
+          var inputs = document.querySelectorAll('input[type="text"]');
+          if(inputs.length > 0) {
+            inputs[0].value = "$escapedBarcode";
+            inputs[0].dispatchEvent(new Event('input'));
           }
-        } catch (error) {
-          console.error("❌ Error handling continuous barcode result:", error);
+          
+          var event = new CustomEvent('barcodeScanned', { 
+            detail: { result: "$escapedBarcode", continuous: $isContinuous } 
+          });
+          document.dispatchEvent(event);
         }
-      ''');
-    } else {
-      // For normal scanning, call getBarcode
-      _currentController!.runJavaScript('''
-        try {
-          if (typeof getBarcode === 'function') {
-            getBarcode("$barcode");
-            console.log("✅ Called getBarcode() with: $barcode");
-          } else if (typeof window.handleBarcodeResult === 'function') {
-            window.handleBarcodeResult("$barcode");
-            console.log("✅ Called window.handleBarcodeResult with: $barcode");
-          } else {
-            // Fallback: fill first text input
-            var inputs = document.querySelectorAll('input[type="text"]');
-            if(inputs.length > 0) {
-              inputs[0].value = "$barcode";
-              inputs[0].dispatchEvent(new Event('input'));
-              inputs[0].dispatchEvent(new Event('change'));
-              console.log("✅ Filled input field with: $barcode (normal mode)");
-            }
-            
-            // Trigger custom event for normal
-            var event = new CustomEvent('barcodeScanned', { 
-              detail: { result: "$barcode", continuous: false } 
-            });
-            document.dispatchEvent(event);
-            console.log("✅ Triggered normal barcodeScanned event with: $barcode");
-          }
-        } catch (error) {
-          console.error("❌ Error handling normal barcode result:", error);
-        }
-      ''');
+        
+      } catch (error) {
+        console.error("❌ Error handling barcode:", error);
+      }
+    ''');
+
+    if (_currentContext != null) {
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text('Barcode scanned: $barcode'),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 
@@ -318,158 +581,170 @@ class WebViewService {
       final themeService = Provider.of<ThemeService>(_currentContext!, listen: false);
       themeService.updateThemeMode(themeMode);
       
-      debugPrint('🎨 Theme changed to: $themeMode');
-      
-      // Show feedback to user
-      ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
         SnackBar(
-          content: Text('Theme changed to ${_capitalize(themeMode)} mode'),
-          duration: const Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
+          content: Text('Theme changed to ${themeMode.toUpperCase()} mode'),
         ),
       );
-    } else {
-      debugPrint('❌ No context available for theme change');
     }
   }
 
-  String _capitalize(String text) {
-    if (text.isEmpty) return text;
-    return "${text[0].toUpperCase()}${text.substring(1)}";
-  }
-
   void _injectJavaScript(WebViewController controller) {
+    debugPrint('💉 Injecting JavaScript...');
+    
     controller.runJavaScript('''
+      console.log("🚀 ERPForever WebView JavaScript loading...");
+      
+      // Enhanced click handler
       document.addEventListener('click', function(e) {
         let element = e.target;
+        
         for (let i = 0; i < 4 && element; i++) {
           const href = element.getAttribute('href');
+          const textContent = element.textContent?.toLowerCase() || '';
+          
+          // Theme requests
           if (href) {
             if (href.startsWith('dark-mode://')) {
               e.preventDefault();
-              console.log('Dark mode requested');
-              window.ThemeManager.postMessage('dark');
+              if (window.ThemeManager) window.ThemeManager.postMessage('dark');
               return false;
             } else if (href.startsWith('light-mode://')) {
               e.preventDefault();
-              console.log('Light mode requested');
-              window.ThemeManager.postMessage('light');
+              if (window.ThemeManager) window.ThemeManager.postMessage('light');
               return false;
             } else if (href.startsWith('system-mode://')) {
               e.preventDefault();
-              console.log('System mode requested');
-              window.ThemeManager.postMessage('system');
+              if (window.ThemeManager) window.ThemeManager.postMessage('system');
               return false;
             } else if (href.startsWith('logout://')) {
               e.preventDefault();
-              console.log('Logout requested');
-              window.AuthManager.postMessage('logout');
+              if (window.AuthManager) window.AuthManager.postMessage('logout');
+              return false;
+            } else if (href.startsWith('get-location://')) {
+              e.preventDefault();
+              if (window.LocationManager) window.LocationManager.postMessage('getCurrentLocation');
+              return false;
+            } else if (href.startsWith('get-contacts://')) {
+              e.preventDefault();
+              if (window.ContactsManager) window.ContactsManager.postMessage('getAllContacts');
               return false;
             }
           }
-          element = element.parentElement;
-        }
-      }, true);
-
-      // Enhanced barcode handling
-      document.addEventListener('click', function(e) {
-        let element = e.target;
-        for (let i = 0; i < 4 && element; i++) {
-          if (element.getAttribute('href')?.includes('barcode') || 
-              element.getAttribute('href')?.includes('scan') ||
-              element.id?.includes('barcode') ||
-              element.id?.includes('scan') ||
-              element.className?.includes('barcode') ||
-              element.className?.includes('scan')) {
+          
+          // Barcode detection
+          if (href?.includes('barcode') || href?.includes('scan') || textContent.includes('scan')) {
             e.preventDefault();
-            
-            // Check if continuous scanning is requested
-            if (element.getAttribute('href')?.includes('continuous') || 
-                element.id?.includes('continuous') ||
-                element.className?.includes('continuous')) {
-              console.log('📸 Continuous barcode scan requested');
-              window.BarcodeScanner.postMessage('scanContinuous');
-            } else {
-              console.log('📸 Normal barcode scan requested');
-              window.BarcodeScanner.postMessage('scan');
-            }
+            if (window.BarcodeScanner) window.BarcodeScanner.postMessage('scan');
             return false;
           }
+          
+          // Logout detection
+          if (textContent.includes('logout') || textContent.includes('log out')) {
+            e.preventDefault();
+            if (window.AuthManager) window.AuthManager.postMessage('logout');
+            return false;
+          }
+          
+          // Location detection
+          if (textContent.includes('get location') || textContent.includes('current location')) {
+            e.preventDefault();
+            if (window.LocationManager) window.LocationManager.postMessage('getCurrentLocation');
+            return false;
+          }
+          
+          // Contacts detection
+          if (textContent.includes('get contacts') || textContent.includes('contacts')) {
+            e.preventDefault();
+            if (window.ContactsManager) window.ContactsManager.postMessage('getAllContacts');
+            return false;
+          }
+          
           element = element.parentElement;
         }
       }, true);
 
-      // Enhanced logout handling
-      document.addEventListener('click', function(e) {
-        let element = e.target;
-        for (let i = 0; i < 4 && element; i++) {
-          // Check for logout button/link
-          if (element.getAttribute('href')?.includes('logout') ||
-              element.id?.includes('logout') ||
-              element.className?.includes('logout') ||
-              element.textContent?.toLowerCase().includes('logout') ||
-              element.textContent?.toLowerCase().includes('log out') ||
-              element.textContent?.toLowerCase().includes('sign out')) {
-            e.preventDefault();
-            console.log('🚪 Logout button clicked');
+      // Utility object
+      window.ERPForever = {
+        // Get all contacts
+        getAllContacts: function() {
+          console.log('📞 Getting all contacts...');
+          if (window.ContactsManager) {
+            window.ContactsManager.postMessage('getAllContacts');
+          } else {
+            console.error('❌ ContactsManager not available');
+          }
+        },
+        
+        // Get current location
+        getCurrentLocation: function() {
+          console.log('🌍 Getting current location...');
+          if (window.LocationManager) {
+            window.LocationManager.postMessage('getCurrentLocation');
+          } else {
+            console.error('❌ LocationManager not available');
+          }
+        },
+        
+        // Scan barcode
+        scanBarcode: function() {
+          console.log('📸 Scanning barcode...');
+          if (window.BarcodeScanner) {
+            window.BarcodeScanner.postMessage('scan');
+          } else {
+            console.error('❌ BarcodeScanner not available');
+          }
+        },
+        
+        // Change theme
+        setTheme: function(theme) {
+          console.log('🎨 Setting theme to:', theme);
+          if (window.ThemeManager) {
+            window.ThemeManager.postMessage(theme);
+          } else {
+            console.error('❌ ThemeManager not available');
+          }
+        },
+        
+        // Logout
+        logout: function() {
+          console.log('🚪 Logging out...');
+          if (window.AuthManager) {
             window.AuthManager.postMessage('logout');
-            return false;
+          } else {
+            console.error('❌ AuthManager not available');
           }
-          element = element.parentElement;
-        }
-      }, true);
-
-      // Barcode result handlers (for reference - these are called from Flutter)
-      window.handleBarcodeResult = function(result) {
-        console.log("📱 Normal barcode result received: " + result);
+        },
         
-        if (typeof getBarcode === 'function') {
-          console.log("Calling getBarcode() with result: " + result);
-          getBarcode(result);
-        } else {
-          console.log("getBarcode() function not found, using fallback");
-          var barcodeInputs = document.querySelectorAll('input[type="text"]');
-          if(barcodeInputs.length > 0) {
-            barcodeInputs[0].value = result;
-            barcodeInputs[0].dispatchEvent(new Event('input'));
-            barcodeInputs[0].dispatchEvent(new Event('change'));
-          }
-          
-          var event = new CustomEvent('barcodeScanned', { detail: { result: result, continuous: false } });
-          document.dispatchEvent(event);
-        }
-      };
-      
-      window.handleContinuousBarcodeResult = function(result) {
-        console.log("📱 Continuous barcode result received: " + result);
+        // Check availability
+        isContactsAvailable: function() {
+          return !!window.ContactsManager;
+        },
         
-        if (typeof getBarcodeContinuous === 'function') {
-          console.log("Calling getBarcodeContinuous() with result: " + result);
-          getBarcodeContinuous(result);
-        } else if (typeof getBarcode === 'function') {
-          console.log("getBarcodeContinuous() not found, falling back to getBarcode");
-          getBarcode(result);
-        } else {
-          console.log("No barcode functions found, using fallback");
-          var barcodeInputs = document.querySelectorAll('input[type="text"]');
-          if(barcodeInputs.length > 0) {
-            barcodeInputs[0].value = result;
-            barcodeInputs[0].dispatchEvent(new Event('input'));
-            barcodeInputs[0].dispatchEvent(new Event('change'));
-          }
-          
-          var event = new CustomEvent('barcodeScanned', { detail: { result: result, continuous: true } });
-          document.dispatchEvent(event);
-        }
+        isLocationAvailable: function() {
+          return !!window.LocationManager;
+        },
+        
+        isBarcodeAvailable: function() {
+          return !!window.BarcodeScanner;
+        },
+        
+        version: '1.0.0'
       };
 
-      console.log("✅ Dynamic WebView JavaScript initialized with logout, barcode, and theme support");
+      console.log("✅ ERPForever WebView JavaScript ready!");
+      console.log("📚 Usage: window.ERPForever.getAllContacts()");
     ''');
   }
 
-  // Update context when creating controllers
+  // Update context
   void updateContext(BuildContext context) {
     _currentContext = context;
+  }
+
+  // Clean up
+  void dispose() {
+    _currentContext = null;
+    _currentController = null;
   }
 }

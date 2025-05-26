@@ -56,5 +56,9 @@
 		<string>This app needs location access to provide location-based features in the ERP system.</string>
 		<key>NSContactsUsageDescription</key>
 		<string>This app needs access to contacts to provide contact selection features in the ERP system.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>This app needs access to photo library to save screenshots.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>This app needs access to photo library to save and share screenshots.</string>
 	</dict>
 </plist>

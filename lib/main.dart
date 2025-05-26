@@ -1,5 +1,6 @@
 // lib/main.dart
 import 'package:ERPForever/themes/dynamic_theme.dart';
+import 'package:ERPForever/widgets/screenshot_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:ERPForever/services/config_service.dart';
@@ -63,7 +64,7 @@ class MyApp extends StatelessWidget {
           themeMode: themeService.themeMode,
           theme: DynamicTheme.buildLightTheme(configService.config),
           darkTheme: DynamicTheme.buildDarkTheme(configService.config),
-          home: shouldShowMainScreen ? const MainScreen() : const LoginPage(),
+          home: ScreenshotWrapper(child: shouldShowMainScreen ? const MainScreen() : const LoginPage()),
         );
       },
     );

@@ -1,4 +1,3 @@
-// lib/pages/main_screen.dart - UPDATED with Logout Support
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -367,9 +366,76 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _handleBarcodeScanning(request.url);
       return NavigationDecision.prevent;
     }
+     if (request.url.startsWith('take-screenshot://')) {
+    _handleScreenshotRequest();
+    return NavigationDecision.prevent;
+  }
+  // Image save requests
+if (request.url.startsWith('save-image://')) {
+  _handleImageSaveRequest(request.url);
+  return NavigationDecision.prevent;
+}
+if (request.url.startsWith('save-pdf://')) {
+  _handlePdfSaveRequest(request.url);
+  return NavigationDecision.prevent;
+}
 
     return NavigationDecision.navigate;
   }
+  void _handlePdfSaveRequest(String url) {
+  debugPrint('📄 PDF save requested from WebView: $url');
+
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  controller.runJavaScript('''
+    if (window.PdfSaver && window.PdfSaver.postMessage) {
+      window.PdfSaver.postMessage("$url");
+      console.log("✅ PDF save request sent");
+    } else {
+      console.log("❌ PdfSaver not found");
+    }
+  ''');
+}
+  void _handleImageSaveRequest(String url) {
+  debugPrint('🖼️ Image save requested from WebView: $url');
+
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  controller.runJavaScript('''
+    if (window.ImageSaver && window.ImageSaver.postMessage) {
+      window.ImageSaver.postMessage("$url");
+      console.log("✅ Image save request sent");
+    } else {
+      console.log("❌ ImageSaver not found");
+    }
+  ''');
+}
+  void _handleScreenshotRequest() {
+  debugPrint('📸 Screenshot requested from WebView');
+
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  controller.runJavaScript('''
+    if (window.ScreenshotManager && window.ScreenshotManager.postMessage) {
+      window.ScreenshotManager.postMessage('takeScreenshot');
+      console.log("✅ Screenshot request sent");
+    } else {
+      console.log("❌ ScreenshotManager not found");
+    }
+  ''');
+}
 
   void _handleContactsRequest() {
     debugPrint('📞 Contacts requested from WebView');

@@ -11,6 +11,9 @@ import 'package:ERPForever/services/theme_service.dart';
 import 'package:ERPForever/services/auth_service.dart';
 import 'package:ERPForever/services/location_service.dart';
 import 'package:ERPForever/services/contacts_service.dart';
+import 'package:ERPForever/services/screenshot_service.dart';
+import 'package:ERPForever/services/image_saver_service.dart';
+import 'package:ERPForever/services/pdf_saver_service.dart';
 
 class WebViewService {
   static final WebViewService _instance = WebViewService._internal();
@@ -75,6 +78,9 @@ class WebViewService {
     // Configure the controller
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0x00000000))
+      ..enableZoom(false)
+      ..setUserAgent('ERPForever-Flutter-App/1.0')
       ..addJavaScriptChannel(
         'BarcodeScanner',
         onMessageReceived: (JavaScriptMessage message) {
@@ -110,6 +116,26 @@ class WebViewService {
           _handleContactsRequest(message.message);
         },
       )
+      ..addJavaScriptChannel(
+        'ScreenshotManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📸 Screenshot message: ${message.message}');
+          _handleScreenshotRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'ImageSaver',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🖼️ Image saver message: ${message.message}');
+          _handleImageSaveRequest(message.message);
+        },
+      )..addJavaScriptChannel(
+  'PdfSaver',
+  onMessageReceived: (JavaScriptMessage message) {
+    debugPrint('📄 PDF saver message: ${message.message}');
+    _handlePdfSaveRequest(message.message);
+  },
+)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
@@ -118,6 +144,22 @@ class WebViewService {
           onPageFinished: (String url) {
             debugPrint('✅ Page finished loading: $url');
             _injectJavaScript(controller);
+            
+            // Make WebView content screenshot-ready
+            controller.runJavaScript('''
+              // Enable hardware acceleration for screenshots
+              document.body.style.webkitBackfaceVisibility = 'hidden';
+              document.body.style.webkitPerspective = '1000px';
+              document.body.style.webkitTransform = 'translate3d(0,0,0)';
+              document.body.style.transform = 'translate3d(0,0,0)';
+              
+              // Ensure content is visible for screenshots
+              document.documentElement.style.webkitTransform = 'translateZ(0)';
+              document.documentElement.style.transform = 'translateZ(0)';
+              
+              console.log("✅ WebView optimized for screenshots");
+            ''');
+            
           },
           onNavigationRequest: (NavigationRequest request) {
             debugPrint('🔄 Navigation request: ${request.url}');
@@ -165,6 +207,21 @@ class WebViewService {
       _handleContactsRequest('getAllContacts');
       return NavigationDecision.prevent;
     }
+    // Handle screenshot requests
+    else if (request.url.startsWith('take-screenshot://')) {
+      _handleScreenshotRequest('takeScreenshot');
+      return NavigationDecision.prevent;
+    }
+    // Handle image save requests
+    else if (request.url.startsWith('save-image://')) {
+      _handleImageSaveRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+    else if (request.url.startsWith('save-pdf://')) {
+  _handlePdfSaveRequest(request.url);
+  return NavigationDecision.prevent;
+}
+
     // Handle barcode requests
     else if (request.url.contains('barcode') || request.url.contains('scan')) {
       bool isContinuous = request.url.contains('continuous');
@@ -173,6 +230,578 @@ class WebViewService {
     }
 
     return NavigationDecision.navigate;
+  }
+  
+void _handlePdfSaveRequest(String message) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for PDF save request');
+    return;
+  }
+
+  debugPrint('📄 Processing PDF save request: $message');
+  
+  // Extract PDF URL from the message
+  String pdfUrl = PdfSaverService().extractPdfUrl(message);
+  
+  if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
+    _sendPdfSaveToWebView({
+      'success': false,
+      'error': 'Invalid PDF URL',
+      'errorCode': 'INVALID_URL',
+      'url': pdfUrl,
+    });
+    return;
+  }
+
+  // Show loading dialog
+  _showPdfSaveLoadingDialog(pdfUrl);
+
+  try {
+    // Save PDF to device
+    Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(message);
+
+    // Hide loading dialog
+    if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+      Navigator.of(_currentContext!).pop();
+    }
+
+    // Send result to WebView
+    _sendPdfSaveToWebView(result);
+
+    // Show option to open PDF if successful
+    if (result['success'] && result['filePath'] != null) {
+      _showPdfSavedDialog(result['filePath'], result['fileName']);
+    }
+
+  } catch (e) {
+    debugPrint('❌ Error handling PDF save request: $e');
+    
+    // Hide loading dialog
+    if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+      Navigator.of(_currentContext!).pop();
+    }
+    
+    _sendPdfSaveToWebView({
+      'success': false,
+      'error': 'Failed to save PDF: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+      'url': pdfUrl,
+    });
+  }
+}
+void _showPdfSaveLoadingDialog(String pdfUrl) {
+  if (_currentContext == null) return;
+
+  showDialog(
+    context: _currentContext!,
+    barrierDismissible: false,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text(
+              'Downloading PDF...',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 8),
+            Text(
+              Uri.parse(pdfUrl).pathSegments.last.replaceAll('.pdf', '') + '.pdf',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+void _showPdfSavedDialog(String filePath, String fileName) {
+  if (_currentContext == null) return;
+
+  showDialog(
+    context: _currentContext!,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.picture_as_pdf, color: Colors.red),
+            SizedBox(width: 8),
+            Text('PDF Saved'),
+          ],
+        ),
+        content: Text('$fileName has been saved successfully. Would you like to open it?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Later'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              
+              final result = await PdfSaverService().openPdf(filePath);
+              
+              if (!result['success']) {
+                ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                  SnackBar(
+                    content: Text(result['error'] ?? 'Could not open PDF'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+              }
+            },
+            child: Text('Open PDF'),
+          ),
+        ],
+      );
+    },
+  );
+}
+void _sendPdfSaveToWebView(Map<String, dynamic> result) {
+  if (_currentController == null) {
+    debugPrint('❌ No WebView controller available for PDF save result');
+    return;
+  }
+
+  debugPrint('📱 Sending PDF save result to WebView');
+
+  final success = result['success'] ?? false;
+  final error = (result['error'] ?? '').replaceAll('"', '\\"');
+  final errorCode = result['errorCode'] ?? '';
+  final message = (result['message'] ?? '').replaceAll('"', '\\"');
+  final fileName = (result['fileName'] ?? '').replaceAll('"', '\\"');
+  final fileSize = result['fileSize'] ?? 0;
+  final url = (result['url'] ?? '').replaceAll('"', '\\"');
+  final filePath = (result['filePath'] ?? '').replaceAll('"', '\\"');
+
+  _currentController!.runJavaScript('''
+    try {
+      console.log("📄 PDF save result: Success=$success");
+      
+      var pdfSaveResult = {
+        success: $success,
+        fileName: "$fileName",
+        fileSize: $fileSize,
+        filePath: "$filePath",
+        message: "$message",
+        error: "$error",
+        errorCode: "$errorCode",
+        url: "$url"
+      };
+      
+      // Try callback functions
+      if (typeof getPdfSaveCallback === 'function') {
+        console.log("✅ Calling getPdfSaveCallback()");
+        getPdfSaveCallback($success, "$fileName", "$message", "$error", "$errorCode");
+      } else if (typeof window.handlePdfSaveResult === 'function') {
+        console.log("✅ Calling window.handlePdfSaveResult()");
+        window.handlePdfSaveResult(pdfSaveResult);
+      } else if (typeof handlePdfSaveResult === 'function') {
+        console.log("✅ Calling handlePdfSaveResult()");
+        handlePdfSaveResult(pdfSaveResult);
+      } else {
+        console.log("✅ Using fallback - triggering event");
+        
+        var event = new CustomEvent('pdfSaved', { detail: pdfSaveResult });
+        document.dispatchEvent(event);
+      }
+      
+    } catch (error) {
+      console.error("❌ Error handling PDF save result:", error);
+    }
+  ''');
+
+  // Show feedback to user
+  if (_currentContext != null) {
+    String feedbackMessage;
+    Color backgroundColor;
+    
+    if (result['success']) {
+      final sizeFormatted = PdfSaverService().formatFileSize(result['fileSize'] ?? 0);
+      feedbackMessage = '${result['message'] ?? 'PDF saved successfully'} ($sizeFormatted)';
+      backgroundColor = Colors.green;
+    } else {
+      feedbackMessage = result['error'] ?? 'Failed to save PDF';
+      backgroundColor = Colors.red;
+    }
+
+    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+      SnackBar(
+        content: Text(feedbackMessage),
+        duration: Duration(seconds: 4),
+        backgroundColor: backgroundColor,
+        action: !result['success'] && result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+          ? SnackBarAction(
+              label: 'Settings',
+              textColor: Colors.white,
+              onPressed: () async {
+                bool opened = await PdfSaverService().openAppSettings();
+                if (!opened) {
+                  ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                    SnackBar(
+                      content: Text('Please enable storage permission in Settings'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              },
+            )
+          : null,
+      ),
+    );
+  }
+}
+
+
+  /// Handle image save requests
+  void _handleImageSaveRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for image save request');
+      return;
+    }
+
+    debugPrint('🖼️ Processing image save request: $message');
+    
+    // Extract image URL from the message
+    String imageUrl = ImageSaverService().extractImageUrl(message);
+    
+    if (!ImageSaverService().isValidImageUrl(imageUrl)) {
+      _sendImageSaveToWebView({
+        'success': false,
+        'error': 'Invalid image URL',
+        'errorCode': 'INVALID_URL',
+        'url': imageUrl,
+      });
+      return;
+    }
+
+    // Show loading dialog
+    _showImageSaveLoadingDialog(imageUrl);
+
+    try {
+      // Save image to gallery
+      Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(message);
+
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+
+      // Send result to WebView
+      _sendImageSaveToWebView(result);
+
+    } catch (e) {
+      debugPrint('❌ Error handling image save request: $e');
+      
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+      
+      _sendImageSaveToWebView({
+        'success': false,
+        'error': 'Failed to save image: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+        'url': imageUrl,
+      });
+    }
+  }
+
+  void _showImageSaveLoadingDialog(String imageUrl) {
+    if (_currentContext == null) return;
+
+    showDialog(
+      context: _currentContext!,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Saving image...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                Uri.parse(imageUrl).pathSegments.last,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _sendImageSaveToWebView(Map<String, dynamic> result) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for image save result');
+      return;
+    }
+
+    debugPrint('📱 Sending image save result to WebView');
+
+    final success = result['success'] ?? false;
+    final error = (result['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = result['errorCode'] ?? '';
+    final message = (result['message'] ?? '').replaceAll('"', '\\"');
+    final fileName = (result['fileName'] ?? '').replaceAll('"', '\\"');
+    final fileSize = result['fileSize'] ?? 0;
+    final url = (result['url'] ?? '').replaceAll('"', '\\"');
+
+    _currentController!.runJavaScript('''
+      try {
+        console.log("🖼️ Image save result: Success=$success");
+        
+        var imageSaveResult = {
+          success: $success,
+          fileName: "$fileName",
+          fileSize: $fileSize,
+          message: "$message",
+          error: "$error",
+          errorCode: "$errorCode",
+          url: "$url"
+        };
+        
+        // Try callback functions
+        if (typeof getImageSaveCallback === 'function') {
+          console.log("✅ Calling getImageSaveCallback()");
+          getImageSaveCallback($success, "$fileName", "$message", "$error", "$errorCode");
+        } else if (typeof window.handleImageSaveResult === 'function') {
+          console.log("✅ Calling window.handleImageSaveResult()");
+          window.handleImageSaveResult(imageSaveResult);
+        } else if (typeof handleImageSaveResult === 'function') {
+          console.log("✅ Calling handleImageSaveResult()");
+          handleImageSaveResult(imageSaveResult);
+        } else {
+          console.log("✅ Using fallback - triggering event");
+          
+          var event = new CustomEvent('imageSaved', { detail: imageSaveResult });
+          document.dispatchEvent(event);
+        }
+        
+      } catch (error) {
+        console.error("❌ Error handling image save result:", error);
+      }
+    ''');
+
+    // Show feedback to user
+    if (_currentContext != null) {
+      String feedbackMessage;
+      Color backgroundColor;
+      
+      if (result['success']) {
+        feedbackMessage = result['message'] ?? 'Image saved successfully';
+        backgroundColor = Colors.green;
+      } else {
+        feedbackMessage = result['error'] ?? 'Failed to save image';
+        backgroundColor = Colors.red;
+      }
+
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text(feedbackMessage),
+          duration: Duration(seconds: 3),
+          backgroundColor: backgroundColor,
+          action: !result['success'] && result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+            ? SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () async {
+                  bool opened = await ImageSaverService().openAppSettings();
+                  if (!opened) {
+                    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                      SnackBar(
+                        content: Text('Please enable storage permission in Settings'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                },
+              )
+            : null,
+        ),
+      );
+    }
+  }
+
+  /// Handle screenshot requests - SIMPLIFIED VERSION
+  void _handleScreenshotRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for screenshot request');
+      return;
+    }
+
+    debugPrint('📸 Processing screenshot request...');
+    
+    // Show loading dialog
+    _showScreenshotLoadingDialog();
+
+    // Add a small delay to ensure WebView is fully rendered
+    await Future.delayed(Duration(milliseconds: 800));
+
+    try {
+      // Use the existing ScreenshotService which should now capture WebView
+      Map<String, dynamic> screenshotResult = await ScreenshotService().takeScreenshotWithOptions(
+        saveToGallery: true,
+        delay: Duration(milliseconds: 200),
+      );
+
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+
+      // Send result to WebView
+      _sendScreenshotToWebView(screenshotResult);
+
+    } catch (e) {
+      debugPrint('❌ Error taking screenshot: $e');
+      
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+      
+      _sendScreenshotToWebView({
+        'success': false,
+        'error': 'Failed to take screenshot: ${e.toString()}',
+        'errorCode': 'CAPTURE_FAILED'
+      });
+    }
+  }
+
+  void _showScreenshotLoadingDialog() {
+    if (_currentContext == null) return;
+
+    showDialog(
+      context: _currentContext!,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Taking screenshot...',
+                style: TextStyle(fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for screenshot result');
+      return;
+    }
+
+    debugPrint('📱 Sending screenshot data to WebView');
+
+    final success = screenshotData['success'] ?? false;
+    final error = (screenshotData['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = screenshotData['errorCode'] ?? '';
+    final message = (screenshotData['message'] ?? '').replaceAll('"', '\\"');
+    final size = screenshotData['size'] ?? 0;
+
+    _currentController!.runJavaScript('''
+      try {
+        console.log("📸 Screenshot received: Success=$success");
+        
+        var screenshotResult = {
+          success: $success,
+          size: $size,
+          message: "$message",
+          error: "$error",
+          errorCode: "$errorCode"
+        };
+        
+        // Try callback functions
+        if (typeof getScreenshotCallback === 'function') {
+          console.log("✅ Calling getScreenshotCallback()");
+          getScreenshotCallback($success, "$message", "$error", "$errorCode");
+        } else if (typeof window.handleScreenshotResult === 'function') {
+          console.log("✅ Calling window.handleScreenshotResult()");
+          window.handleScreenshotResult(screenshotResult);
+        } else if (typeof handleScreenshotResult === 'function') {
+          console.log("✅ Calling handleScreenshotResult()");
+          handleScreenshotResult(screenshotResult);
+        } else {
+          console.log("✅ Using fallback - triggering event");
+          
+          var event = new CustomEvent('screenshotTaken', { detail: screenshotResult });
+          document.dispatchEvent(event);
+        }
+        
+      } catch (error) {
+        console.error("❌ Error handling screenshot result:", error);
+      }
+    ''');
+
+    // Show simple feedback to user
+    if (_currentContext != null) {
+      String feedbackMessage;
+      Color backgroundColor;
+      
+      if (screenshotData['success']) {
+        // Check if it was actually saved to gallery
+        if (screenshotData['actions'] != null && 
+            screenshotData['actions']['gallery'] != null &&
+            screenshotData['actions']['gallery']['success'] == true) {
+          feedbackMessage = 'Screenshot saved to gallery';
+        } else {
+          feedbackMessage = 'Screenshot taken successfully';
+        }
+        backgroundColor = Colors.green;
+      } else {
+        feedbackMessage = screenshotData['error'] ?? 'Failed to take screenshot';
+        backgroundColor = Colors.red;
+      }
+
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text(feedbackMessage),
+          duration: Duration(seconds: 2),
+          backgroundColor: backgroundColor,
+          action: !screenshotData['success'] && screenshotData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+            ? SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () async {
+                  bool opened = await ScreenshotService().openAppSettings();
+                  if (!opened) {
+                    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                      SnackBar(
+                        content: Text('Please enable storage permission in Settings'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                },
+              )
+            : null,
+        ),
+      );
+    }
   }
 
   /// Handle contacts requests
@@ -588,155 +1217,417 @@ class WebViewService {
       );
     }
   }
-
-  void _injectJavaScript(WebViewController controller) {
-    debugPrint('💉 Injecting JavaScript...');
+void _injectJavaScript(WebViewController controller) {
+  debugPrint('💉 Injecting JavaScript...');
+  
+  controller.runJavaScript('''
+    console.log("🚀 ERPForever WebView JavaScript loading...");
     
-    controller.runJavaScript('''
-      console.log("🚀 ERPForever WebView JavaScript loading...");
+    // Enhanced click handler
+    document.addEventListener('click', function(e) {
+      let element = e.target;
       
-      // Enhanced click handler
-      document.addEventListener('click', function(e) {
-        let element = e.target;
+      for (let i = 0; i < 4 && element; i++) {
+        const href = element.getAttribute('href');
+        const textContent = element.textContent?.toLowerCase() || '';
         
-        for (let i = 0; i < 4 && element; i++) {
-          const href = element.getAttribute('href');
-          const textContent = element.textContent?.toLowerCase() || '';
-          
+        // Handle all URL protocols
+        if (href) {
           // Theme requests
-          if (href) {
-            if (href.startsWith('dark-mode://')) {
-              e.preventDefault();
-              if (window.ThemeManager) window.ThemeManager.postMessage('dark');
-              return false;
-            } else if (href.startsWith('light-mode://')) {
-              e.preventDefault();
-              if (window.ThemeManager) window.ThemeManager.postMessage('light');
-              return false;
-            } else if (href.startsWith('system-mode://')) {
-              e.preventDefault();
-              if (window.ThemeManager) window.ThemeManager.postMessage('system');
-              return false;
-            } else if (href.startsWith('logout://')) {
-              e.preventDefault();
-              if (window.AuthManager) window.AuthManager.postMessage('logout');
-              return false;
-            } else if (href.startsWith('get-location://')) {
-              e.preventDefault();
-              if (window.LocationManager) window.LocationManager.postMessage('getCurrentLocation');
-              return false;
-            } else if (href.startsWith('get-contacts://')) {
-              e.preventDefault();
-              if (window.ContactsManager) window.ContactsManager.postMessage('getAllContacts');
-              return false;
-            }
-          }
-          
-          // Barcode detection
-          if (href?.includes('barcode') || href?.includes('scan') || textContent.includes('scan')) {
+          if (href.startsWith('dark-mode://')) {
             e.preventDefault();
-            if (window.BarcodeScanner) window.BarcodeScanner.postMessage('scan');
+            if (window.ThemeManager) window.ThemeManager.postMessage('dark');
             return false;
-          }
-          
-          // Logout detection
-          if (textContent.includes('logout') || textContent.includes('log out')) {
+          } else if (href.startsWith('light-mode://')) {
+            e.preventDefault();
+            if (window.ThemeManager) window.ThemeManager.postMessage('light');
+            return false;
+          } else if (href.startsWith('system-mode://')) {
+            e.preventDefault();
+            if (window.ThemeManager) window.ThemeManager.postMessage('system');
+            return false;
+          } 
+          // Auth requests
+          else if (href.startsWith('logout://')) {
             e.preventDefault();
             if (window.AuthManager) window.AuthManager.postMessage('logout');
             return false;
-          }
-          
-          // Location detection
-          if (textContent.includes('get location') || textContent.includes('current location')) {
+          } 
+          // Location requests
+          else if (href.startsWith('get-location://')) {
             e.preventDefault();
             if (window.LocationManager) window.LocationManager.postMessage('getCurrentLocation');
             return false;
-          }
-          
-          // Contacts detection
-          if (textContent.includes('get contacts') || textContent.includes('contacts')) {
+          } 
+          // Contacts requests
+          else if (href.startsWith('get-contacts://')) {
             e.preventDefault();
             if (window.ContactsManager) window.ContactsManager.postMessage('getAllContacts');
             return false;
+          } 
+          // Screenshot requests
+          else if (href.startsWith('take-screenshot://')) {
+            e.preventDefault();
+            if (window.ScreenshotManager) window.ScreenshotManager.postMessage('takeScreenshot');
+            return false;
+          } 
+          // Image save requests
+          else if (href.startsWith('save-image://')) {
+            e.preventDefault();
+            if (window.ImageSaver) window.ImageSaver.postMessage(href);
+            return false;
+          } 
+          // PDF save requests - NEW
+          else if (href.startsWith('save-pdf://')) {
+            e.preventDefault();
+            if (window.PdfSaver) {
+              window.PdfSaver.postMessage(href);
+              console.log("📄 PDF save triggered via URL:", href);
+            } else {
+              console.error("❌ PdfSaver not available");
+            }
+            return false;
           }
-          
-          element = element.parentElement;
         }
-      }, true);
-
-      // Utility object
-      window.ERPForever = {
-        // Get all contacts
-        getAllContacts: function() {
-          console.log('📞 Getting all contacts...');
-          if (window.ContactsManager) {
-            window.ContactsManager.postMessage('getAllContacts');
-          } else {
-            console.error('❌ ContactsManager not available');
-          }
-        },
         
-        // Get current location
-        getCurrentLocation: function() {
-          console.log('🌍 Getting current location...');
-          if (window.LocationManager) {
-            window.LocationManager.postMessage('getCurrentLocation');
-          } else {
-            console.error('❌ LocationManager not available');
-          }
-        },
+        // Text-based detection (enhanced)
         
-        // Scan barcode
-        scanBarcode: function() {
-          console.log('📸 Scanning barcode...');
+        // Barcode detection
+        if (href?.includes('barcode') || href?.includes('scan') || textContent.includes('scan barcode') || textContent.includes('qr code')) {
+          e.preventDefault();
           if (window.BarcodeScanner) {
             window.BarcodeScanner.postMessage('scan');
-          } else {
-            console.error('❌ BarcodeScanner not available');
+            console.log("📱 Barcode scan triggered via text");
           }
-        },
+          return false;
+        }
         
-        // Change theme
-        setTheme: function(theme) {
-          console.log('🎨 Setting theme to:', theme);
-          if (window.ThemeManager) {
-            window.ThemeManager.postMessage(theme);
-          } else {
-            console.error('❌ ThemeManager not available');
-          }
-        },
-        
-        // Logout
-        logout: function() {
-          console.log('🚪 Logging out...');
+        // Logout detection
+        if (textContent.includes('logout') || textContent.includes('log out') || textContent.includes('sign out')) {
+          e.preventDefault();
           if (window.AuthManager) {
             window.AuthManager.postMessage('logout');
-          } else {
-            console.error('❌ AuthManager not available');
+            console.log("🚪 Logout triggered via text");
           }
-        },
+          return false;
+        }
         
-        // Check availability
-        isContactsAvailable: function() {
-          return !!window.ContactsManager;
-        },
+        // Location detection
+        if (textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) {
+          e.preventDefault();
+          if (window.LocationManager) {
+            window.LocationManager.postMessage('getCurrentLocation');
+            console.log("🌍 Location request triggered via text");
+          }
+          return false;
+        }
         
-        isLocationAvailable: function() {
-          return !!window.LocationManager;
-        },
+        // Contacts detection
+        if (textContent.includes('get contacts') || textContent.includes('load contacts') || textContent.includes('contact list')) {
+          e.preventDefault();
+          if (window.ContactsManager) {
+            window.ContactsManager.postMessage('getAllContacts');
+            console.log("📞 Contacts request triggered via text");
+          }
+          return false;
+        }
         
-        isBarcodeAvailable: function() {
-          return !!window.BarcodeScanner;
-        },
+        // Screenshot detection
+        if (textContent.includes('screenshot') || textContent.includes('capture screen') || textContent.includes('take screenshot')) {
+          e.preventDefault();
+          if (window.ScreenshotManager) {
+            window.ScreenshotManager.postMessage('takeScreenshot');
+            console.log("📸 Screenshot triggered via text");
+          }
+          return false;
+        }
         
-        version: '1.0.0'
-      };
+        // Image save detection by text
+        if (textContent.includes('save image') || textContent.includes('download image') || textContent.includes('save photo')) {
+          // Try to find image URL in nearby elements
+          let imgElement = element.querySelector('img') || element.closest('img') || element.previousElementSibling?.querySelector('img') || element.nextElementSibling?.querySelector('img');
+          if (imgElement && imgElement.src) {
+            e.preventDefault();
+            if (window.ImageSaver) {
+              window.ImageSaver.postMessage('save-image://' + imgElement.src);
+              console.log("🖼️ Image save triggered via text for:", imgElement.src);
+            }
+            return false;
+          }
+        }
+        
+        // PDF save detection by text - ENHANCED
+        if (textContent.includes('save pdf') || textContent.includes('download pdf') || textContent.includes('save document') || textContent.includes('download document')) {
+          // Try to find PDF URL in nearby elements
+          let linkElement = element.querySelector('a[href*=".pdf"]') || 
+                           element.closest('a[href*=".pdf"]') || 
+                           element.previousElementSibling?.querySelector('a[href*=".pdf"]') ||
+                           element.nextElementSibling?.querySelector('a[href*=".pdf"]');
+          
+          if (linkElement && linkElement.href) {
+            e.preventDefault();
+            if (window.PdfSaver) {
+              window.PdfSaver.postMessage('save-pdf://' + linkElement.href);
+              console.log("📄 PDF save triggered via text for:", linkElement.href);
+            } else {
+              console.error("❌ PdfSaver not available");
+            }
+            return false;
+          }
+          
+          // Also check for data attributes or custom PDF URLs
+          let pdfUrl = element.getAttribute('data-pdf-url') || 
+                      element.getAttribute('data-document-url') ||
+                      element.closest('[data-pdf-url]')?.getAttribute('data-pdf-url');
+          
+          if (pdfUrl) {
+            e.preventDefault();
+            if (window.PdfSaver) {
+              window.PdfSaver.postMessage('save-pdf://' + pdfUrl);
+              console.log("📄 PDF save triggered via data attribute:", pdfUrl);
+            }
+            return false;
+          }
+        }
+        
+        // Auto-detect PDF links on any click
+        if (href && (href.toLowerCase().includes('.pdf') || href.toLowerCase().includes('pdf'))) {
+          // Check if this is meant to be a PDF save operation
+          if (textContent.includes('save') || textContent.includes('download') || element.classList.contains('save-pdf') || element.classList.contains('download-pdf')) {
+            e.preventDefault();
+            if (window.PdfSaver) {
+              window.PdfSaver.postMessage('save-pdf://' + href);
+              console.log("📄 PDF save auto-detected for:", href); 
+            }
+            return false;
+          }
+        }
+        
+        element = element.parentElement;
+      }
+    }, true);
 
-      console.log("✅ ERPForever WebView JavaScript ready!");
-      console.log("📚 Usage: window.ERPForever.getAllContacts()");
-    ''');
-  }
+    // Enhanced utility object with PDF support
+    window.ERPForever = {
+      // Get all contacts
+      getAllContacts: function() {
+        console.log('📞 Getting all contacts...');
+        if (window.ContactsManager) {
+          window.ContactsManager.postMessage('getAllContacts');
+        } else {
+          console.error('❌ ContactsManager not available');
+        }
+      },
+      
+      // Take screenshot
+      takeScreenshot: function() {
+        console.log('📸 Taking screenshot...');
+        if (window.ScreenshotManager) {
+          window.ScreenshotManager.postMessage('takeScreenshot');
+        } else {
+          console.error('❌ ScreenshotManager not available');
+        }
+      },
+      
+      // Save image from URL
+      saveImage: function(imageUrl) {
+        console.log('🖼️ Saving image:', imageUrl);
+        if (window.ImageSaver) {
+          // Add protocol if not present
+          if (!imageUrl.startsWith('save-image://')) {
+            imageUrl = 'save-image://' + imageUrl;
+          }
+          window.ImageSaver.postMessage(imageUrl);
+        } else {
+          console.error('❌ ImageSaver not available');
+        }
+      },
+      
+      // Save PDF from URL - ENHANCED
+      savePdf: function(pdfUrl) {
+        console.log('📄 Saving PDF:', pdfUrl);
+        if (window.PdfSaver) {
+          // Validate URL
+          if (!pdfUrl || typeof pdfUrl !== 'string') {
+            console.error('❌ Invalid PDF URL provided');
+            return false;
+          }
+          
+          // Add protocol if not present
+          if (!pdfUrl.startsWith('save-pdf://')) {
+            pdfUrl = 'save-pdf://' + pdfUrl;
+          }
+          
+          window.PdfSaver.postMessage(pdfUrl);
+          return true;
+        } else {
+          console.error('❌ PdfSaver not available');
+          return false;
+        }
+      },
+      
+      // Get current location
+      getCurrentLocation: function() {
+        console.log('🌍 Getting current location...');
+        if (window.LocationManager) {
+          window.LocationManager.postMessage('getCurrentLocation');
+        } else {
+          console.error('❌ LocationManager not available');
+        }
+      },
+      
+      // Scan barcode
+      scanBarcode: function() {
+        console.log('📸 Scanning barcode...');
+        if (window.BarcodeScanner) {
+          window.BarcodeScanner.postMessage('scan');
+        } else {
+          console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      // Change theme
+      setTheme: function(theme) {
+        console.log('🎨 Setting theme to:', theme);
+        if (window.ThemeManager) {
+          window.ThemeManager.postMessage(theme);
+        } else {
+          console.error('❌ ThemeManager not available');
+        }
+      },
+      
+      // Logout
+      logout: function() {
+        console.log('🚪 Logging out...');
+        if (window.AuthManager) {
+          window.AuthManager.postMessage('logout');
+        } else {
+          console.error('❌ AuthManager not available');
+        }
+      },
+      
+      // Utility functions
+      
+      // Auto-save PDF from current page
+      savePdfFromPage: function() {
+        var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
+        if (pdfLinks.length > 0) {
+          this.savePdf(pdfLinks[0].href);
+          return true;
+        } else {
+          console.log('📄 No PDF links found on current page');
+          return false;
+        }
+      },
+      
+      // Save multiple PDFs
+      saveAllPdfs: function() {
+        var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
+        console.log('📄 Found', pdfLinks.length, 'PDF links');
+        
+        pdfLinks.forEach((link, index) => {
+          setTimeout(() => {
+            this.savePdf(link.href);
+          }, index * 1000); // 1 second delay between each save
+        });
+        
+        return pdfLinks.length;
+      },
+      
+      // Check availability functions
+      isContactsAvailable: function() {
+        return !!window.ContactsManager;
+      },
+      
+      isLocationAvailable: function() {
+        return !!window.LocationManager;
+      },
+      
+      isBarcodeAvailable: function() {
+        return !!window.BarcodeScanner;
+      },
+      
+      isScreenshotAvailable: function() {
+        return !!window.ScreenshotManager;
+      },
+      
+      isImageSaverAvailable: function() {
+        return !!window.ImageSaver;
+      },
+      
+      isPdfSaverAvailable: function() {
+        return !!window.PdfSaver;
+      },
+      
+      // Get all available features
+      getAvailableFeatures: function() {
+        return {
+          contacts: this.isContactsAvailable(),
+          location: this.isLocationAvailable(),
+          barcode: this.isBarcodeAvailable(),
+          screenshot: this.isScreenshotAvailable(),
+          imageSaver: this.isImageSaverAvailable(),
+          pdfSaver: this.isPdfSaverAvailable()
+        };
+      },
+      
+      version: '1.0.0'
+    };
 
+    // Enhanced logging and ready event
+    console.log("✅ ERPForever WebView JavaScript ready!");
+    console.log("📚 Usage examples:");
+    console.log("  - window.ERPForever.getAllContacts()");
+    console.log("  - window.ERPForever.getCurrentLocation()");
+    console.log("  - window.ERPForever.takeScreenshot()");
+    console.log("  - window.ERPForever.saveImage('https://example.com/image.jpg')");
+    console.log("  - window.ERPForever.savePdf('https://example.com/document.pdf')");
+    console.log("  - window.ERPForever.savePdfFromPage() // Auto-find PDF on page");
+    console.log("  - window.ERPForever.saveAllPdfs() // Save all PDFs on page");
+    console.log("  - window.ERPForever.scanBarcode()");
+    console.log("  - window.ERPForever.setTheme('dark')");
+    console.log("  - window.ERPForever.logout()");
+    
+    // Global error handler for better debugging
+    window.addEventListener('error', function(e) {
+      console.error('JavaScript error:', e.error);
+    });
+    
+    // Ready event for external scripts
+    var readyEvent = new CustomEvent('ERPForeverReady', { 
+      detail: { 
+        version: window.ERPForever.version,
+        features: window.ERPForever.getAvailableFeatures()
+      } 
+    });
+    document.dispatchEvent(readyEvent);
+    
+    // Auto-detect and highlight PDF links on page
+    setTimeout(function() {
+      var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
+      console.log('📄 Found', pdfLinks.length, 'PDF links on page');
+      
+      // Optional: Add visual indicator for PDF links
+      pdfLinks.forEach(function(link) {
+        if (!link.classList.contains('pdf-detected')) {
+          link.classList.add('pdf-detected');
+          link.title = (link.title || '') + ' (Click to save PDF)';
+          
+          // Add PDF icon if not already present
+          if (!link.querySelector('.pdf-icon')) {
+            var icon = document.createElement('span');
+            icon.className = 'pdf-icon';
+            icon.innerHTML = '📄 ';
+            icon.style.marginRight = '4px';
+            link.insertBefore(icon, link.firstChild);
+          }
+        }
+      });
+    }, 1000);
+    
+    console.log("🎉 ERPForever WebView fully initialized with PDF support!");
+  ''');
+}
   // Update context
   void updateContext(BuildContext context) {
     _currentContext = context;

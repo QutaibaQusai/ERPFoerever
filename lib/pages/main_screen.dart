@@ -11,6 +11,8 @@ import 'package:ERPForever/widgets/dynamic_app_bar.dart';
 import 'package:ERPForever/widgets/loading_widget.dart';
 import 'package:ERPForever/pages/barcode_scanner_page.dart';
 import 'package:ERPForever/pages/login_page.dart';
+import 'package:ERPForever/services/alert_service.dart';
+
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -379,9 +381,101 @@ if (request.url.startsWith('save-pdf://')) {
   _handlePdfSaveRequest(request.url);
   return NavigationDecision.prevent;
 }
+  if (request.url.startsWith('alert://') || 
+      request.url.startsWith('confirm://') || 
+      request.url.startsWith('prompt://')) {
+    _handleAlertRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+  
 
     return NavigationDecision.navigate;
   }
+  void _handleAlertRequest(String url) async {
+  debugPrint('🚨 Alert request received in main screen: $url');
+  
+  try {
+    Map<String, dynamic> result;
+    String alertType = AlertService().getAlertType(url);
+    
+    switch (alertType) {
+      case 'alert':
+        result = await AlertService().showAlertFromUrl(url, context);
+        break;
+      case 'confirm':
+        result = await AlertService().showConfirmFromUrl(url, context);
+        break;
+      case 'prompt':
+        result = await AlertService().showPromptFromUrl(url, context);
+        break;
+      default:
+        result = await AlertService().showAlertFromUrl(url, context);
+        break;
+    }
+
+    // Send result back to WebView
+    _sendAlertResultToCurrentWebView(result, alertType);
+
+  } catch (e) {
+    debugPrint('❌ Error handling alert in main screen: $e');
+    
+    _sendAlertResultToCurrentWebView({
+      'success': false,
+      'error': 'Failed to handle alert: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR'
+    }, 'alert');
+  }
+}
+// Add this method to send alert results to the current WebView:
+void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertType) {
+  final controller = _controllerManager.getController(_selectedIndex, '', context);
+
+  final success = result['success'] ?? false;
+  final error = (result['error'] ?? '').replaceAll('"', '\\"');
+  final errorCode = result['errorCode'] ?? '';
+  final message = (result['message'] ?? '').replaceAll('"', '\\"');
+  final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
+  final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
+  final confirmed = result['confirmed'] ?? false;
+  final cancelled = result['cancelled'] ?? false;
+  final dismissed = result['dismissed'] ?? false;
+
+  controller.runJavaScript('''
+    try {
+      console.log("🚨 Alert result from main screen: Type=$alertType, Success=$success");
+      
+      var alertResult = {
+        success: $success,
+        type: "$alertType",
+        message: "$message",
+        userResponse: "$userResponse",
+        userInput: "$userInput",
+        confirmed: $confirmed,
+        cancelled: $cancelled,
+        dismissed: $dismissed,
+        error: "$error",
+        errorCode: "$errorCode"
+      };
+      
+      // Try specific callback functions
+      if ("$alertType" === "alert" && typeof getAlertCallback === 'function') {
+        getAlertCallback($success, "$message", "$userResponse", "$error");
+      } else if ("$alertType" === "confirm" && typeof getConfirmCallback === 'function') {
+        getConfirmCallback($success, "$message", $confirmed, $cancelled, "$error");
+      } else if ("$alertType" === "prompt" && typeof getPromptCallback === 'function') {
+        getPromptCallback($success, "$message", "$userInput", $confirmed, "$error");
+      } else if (typeof handleAlertResult === 'function') {
+        handleAlertResult(alertResult);
+      } else {
+        var event = new CustomEvent('alertResult', { detail: alertResult });
+        document.dispatchEvent(event);
+      }
+      
+    } catch (error) {
+      console.error("❌ Error handling alert result:", error);
+    }
+  ''');
+}
   void _handlePdfSaveRequest(String url) {
   debugPrint('📄 PDF save requested from WebView: $url');
 

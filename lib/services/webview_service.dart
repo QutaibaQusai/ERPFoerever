@@ -14,6 +14,8 @@ import 'package:ERPForever/services/contacts_service.dart';
 import 'package:ERPForever/services/screenshot_service.dart';
 import 'package:ERPForever/services/image_saver_service.dart';
 import 'package:ERPForever/services/pdf_saver_service.dart';
+import 'package:ERPForever/services/alert_service.dart';
+
 
 class WebViewService {
   static final WebViewService _instance = WebViewService._internal();
@@ -135,6 +137,12 @@ class WebViewService {
     debugPrint('📄 PDF saver message: ${message.message}');
     _handlePdfSaveRequest(message.message);
   },
+)..addJavaScriptChannel(
+  'AlertManager',
+  onMessageReceived: (JavaScriptMessage message) {
+    debugPrint('🚨 Alert message: ${message.message}');
+    _handleAlertRequest(message.message);
+  },
 )
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -177,6 +185,10 @@ class WebViewService {
     
     return controller;
   }
+
+
+
+
 
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
@@ -221,6 +233,17 @@ class WebViewService {
   _handlePdfSaveRequest(request.url);
   return NavigationDecision.prevent;
 }
+  // Handle alert requests - ADD THIS SECTION
+  if (request.url.startsWith('alert://')) {
+    _handleAlertRequest(request.url);
+    return NavigationDecision.prevent;
+  } else if (request.url.startsWith('confirm://')) {
+    _handleAlertRequest(request.url);
+    return NavigationDecision.prevent;
+  } else if (request.url.startsWith('prompt://')) {
+    _handleAlertRequest(request.url);
+    return NavigationDecision.prevent;
+  }
 
     // Handle barcode requests
     else if (request.url.contains('barcode') || request.url.contains('scan')) {
@@ -231,7 +254,124 @@ class WebViewService {
 
     return NavigationDecision.navigate;
   }
+  void _handleAlertRequest(String message) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for alert request');
+    return;
+  }
+
+  debugPrint('🚨 Processing alert request: $message');
   
+  try {
+    Map<String, dynamic> result;
+    String alertType = AlertService().getAlertType(message);
+    
+    switch (alertType) {
+      case 'alert':
+        result = await AlertService().showAlertFromUrl(message, _currentContext!);
+        break;
+      case 'confirm':
+        result = await AlertService().showConfirmFromUrl(message, _currentContext!);
+        break;
+      case 'prompt':
+        result = await AlertService().showPromptFromUrl(message, _currentContext!);
+        break;
+      default:
+        // Fallback: treat as simple alert
+        result = await AlertService().showAlertFromUrl(message, _currentContext!);
+        break;
+    }
+
+    // Send result back to WebView
+    _sendAlertResultToWebView(result, alertType);
+
+  } catch (e) {
+    debugPrint('❌ Error handling alert request: $e');
+    
+    _sendAlertResultToWebView({
+      'success': false,
+      'error': 'Failed to handle alert: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR'
+    }, 'alert');
+  }
+}
+void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
+  if (_currentController == null) {
+    debugPrint('❌ No WebView controller available for alert result');
+    return;
+  }
+
+  debugPrint('📱 Sending alert result to WebView: $alertType');
+
+  final success = result['success'] ?? false;
+  final error = (result['error'] ?? '').replaceAll('"', '\\"');
+  final errorCode = result['errorCode'] ?? '';
+  final message = (result['message'] ?? '').replaceAll('"', '\\"');
+  final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
+  final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
+  final confirmed = result['confirmed'] ?? false;
+  final cancelled = result['cancelled'] ?? false;
+  final dismissed = result['dismissed'] ?? false;
+
+  _currentController!.runJavaScript('''
+    try {
+      console.log("🚨 Alert result received: Type=$alertType, Success=$success");
+      
+      var alertResult = {
+        success: $success,
+        type: "$alertType",
+        message: "$message",
+        userResponse: "$userResponse",
+        userInput: "$userInput",
+        confirmed: $confirmed,
+        cancelled: $cancelled,
+        dismissed: $dismissed,
+        error: "$error",
+        errorCode: "$errorCode"
+      };
+      
+      // Try specific callback functions for each alert type
+      if ("$alertType" === "alert") {
+        if (typeof getAlertCallback === 'function') {
+          console.log("✅ Calling getAlertCallback()");
+          getAlertCallback($success, "$message", "$userResponse", "$error");
+        } else if (typeof window.handleAlertResult === 'function') {
+          console.log("✅ Calling window.handleAlertResult()");
+          window.handleAlertResult(alertResult);
+        }
+      } else if ("$alertType" === "confirm") {
+        if (typeof getConfirmCallback === 'function') {
+          console.log("✅ Calling getConfirmCallback()");
+          getConfirmCallback($success, "$message", $confirmed, $cancelled, "$error");
+        } else if (typeof window.handleConfirmResult === 'function') {
+          console.log("✅ Calling window.handleConfirmResult()");
+          window.handleConfirmResult(alertResult);
+        }
+      } else if ("$alertType" === "prompt") {
+        if (typeof getPromptCallback === 'function') {
+          console.log("✅ Calling getPromptCallback()");
+          getPromptCallback($success, "$message", "$userInput", $confirmed, "$error");
+        } else if (typeof window.handlePromptResult === 'function') {
+          console.log("✅ Calling window.handlePromptResult()");
+          window.handlePromptResult(alertResult);
+        }
+      }
+      
+      // Generic callback
+      if (typeof handleAlertResult === 'function') {
+        console.log("✅ Calling generic handleAlertResult()");
+        handleAlertResult(alertResult);
+      }
+      
+      // Fallback: trigger custom event
+      var event = new CustomEvent('alertResult', { detail: alertResult });
+      document.dispatchEvent(event);
+      
+    } catch (error) {
+      console.error("❌ Error handling alert result:", error);
+    }
+  ''');
+}
 void _handlePdfSaveRequest(String message) async {
   if (_currentContext == null) {
     debugPrint('❌ No context available for PDF save request');
@@ -1223,7 +1363,7 @@ void _injectJavaScript(WebViewController controller) {
   controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading...");
     
-    // Enhanced click handler
+    // Enhanced click handler with full protocol support
     document.addEventListener('click', function(e) {
       let element = e.target;
       
@@ -1233,8 +1373,37 @@ void _injectJavaScript(WebViewController controller) {
         
         // Handle all URL protocols
         if (href) {
+          // Alert requests - NEW
+          if (href.startsWith('alert://')) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage(href);
+              console.log("🚨 Alert triggered via URL:", href);
+            } else {
+              console.error("❌ AlertManager not available");
+            }
+            return false;
+          } else if (href.startsWith('confirm://')) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage(href);
+              console.log("❓ Confirm triggered via URL:", href);
+            } else {
+              console.error("❌ AlertManager not available");
+            }
+            return false;
+          } else if (href.startsWith('prompt://')) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage(href);
+              console.log("✏️ Prompt triggered via URL:", href);
+            } else {
+              console.error("❌ AlertManager not available");
+            }
+            return false;
+          }
           // Theme requests
-          if (href.startsWith('dark-mode://')) {
+          else if (href.startsWith('dark-mode://')) {
             e.preventDefault();
             if (window.ThemeManager) window.ThemeManager.postMessage('dark');
             return false;
@@ -1277,7 +1446,7 @@ void _injectJavaScript(WebViewController controller) {
             if (window.ImageSaver) window.ImageSaver.postMessage(href);
             return false;
           } 
-          // PDF save requests - NEW
+          // PDF save requests
           else if (href.startsWith('save-pdf://')) {
             e.preventDefault();
             if (window.PdfSaver) {
@@ -1290,7 +1459,63 @@ void _injectJavaScript(WebViewController controller) {
           }
         }
         
-        // Text-based detection (enhanced)
+        // Text-based detection (enhanced with alerts)
+        
+        // Alert detection - NEW
+        if (textContent.includes('show alert') || textContent.includes('alert message') || textContent.includes('display alert')) {
+          // Look for data attributes containing alert message
+          let alertMsg = element.getAttribute('data-alert') || 
+                        element.getAttribute('data-message') ||
+                        element.closest('[data-alert]')?.getAttribute('data-alert') ||
+                        element.closest('[data-message]')?.getAttribute('data-message');
+          
+          if (alertMsg) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage('alert://' + encodeURIComponent(alertMsg));
+              console.log("🚨 Alert triggered via text for:", alertMsg);
+            }
+            return false;
+          }
+        }
+        
+        // Confirm detection - NEW
+        if (textContent.includes('confirm') || textContent.includes('are you sure') || textContent.includes('delete')) {
+          let confirmMsg = element.getAttribute('data-confirm') || 
+                          element.getAttribute('data-message') ||
+                          element.closest('[data-confirm]')?.getAttribute('data-confirm');
+          
+          if (confirmMsg) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage('confirm://' + encodeURIComponent(confirmMsg));
+              console.log("❓ Confirm triggered via text for:", confirmMsg);
+            }
+            return false;
+          }
+        }
+        
+        // Prompt detection - NEW
+        if (textContent.includes('input') || textContent.includes('enter') || textContent.includes('prompt')) {
+          let promptMsg = element.getAttribute('data-prompt') || 
+                         element.getAttribute('data-message') ||
+                         element.closest('[data-prompt]')?.getAttribute('data-prompt');
+          let defaultValue = element.getAttribute('data-default') || 
+                           element.closest('[data-default]')?.getAttribute('data-default') || '';
+          
+          if (promptMsg) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              let promptUrl = 'prompt://message=' + encodeURIComponent(promptMsg);
+              if (defaultValue) {
+                promptUrl += '&default=' + encodeURIComponent(defaultValue);
+              }
+              window.AlertManager.postMessage(promptUrl);
+              console.log("✏️ Prompt triggered via text for:", promptMsg);
+            }
+            return false;
+          }
+        }
         
         // Barcode detection
         if (href?.includes('barcode') || href?.includes('scan') || textContent.includes('scan barcode') || textContent.includes('qr code')) {
@@ -1356,7 +1581,7 @@ void _injectJavaScript(WebViewController controller) {
           }
         }
         
-        // PDF save detection by text - ENHANCED
+        // PDF save detection by text
         if (textContent.includes('save pdf') || textContent.includes('download pdf') || textContent.includes('save document') || textContent.includes('download document')) {
           // Try to find PDF URL in nearby elements
           let linkElement = element.querySelector('a[href*=".pdf"]') || 
@@ -1407,9 +1632,53 @@ void _injectJavaScript(WebViewController controller) {
       }
     }, true);
 
-    // Enhanced utility object with PDF support
+    // Enhanced utility object with complete feature set
     window.ERPForever = {
-      // Get all contacts
+      // Alert System - NEW
+      showAlert: function(message) {
+        console.log('🚨 Showing alert:', message);
+        if (window.AlertManager) {
+          if (typeof message === 'string' && message.trim()) {
+            window.AlertManager.postMessage('alert://' + encodeURIComponent(message));
+          } else {
+            console.error('❌ Invalid alert message');
+          }
+        } else {
+          console.error('❌ AlertManager not available');
+        }
+      },
+      
+      showConfirm: function(message) {
+        console.log('❓ Showing confirm:', message);
+        if (window.AlertManager) {
+          if (typeof message === 'string' && message.trim()) {
+            window.AlertManager.postMessage('confirm://' + encodeURIComponent(message));
+          } else {
+            console.error('❌ Invalid confirm message');
+          }
+        } else {
+          console.error('❌ AlertManager not available');
+        }
+      },
+      
+      showPrompt: function(message, defaultValue = '') {
+        console.log('✏️ Showing prompt:', message, 'default:', defaultValue);
+        if (window.AlertManager) {
+          if (typeof message === 'string' && message.trim()) {
+            let promptUrl = 'prompt://message=' + encodeURIComponent(message);
+            if (defaultValue) {
+              promptUrl += '&default=' + encodeURIComponent(defaultValue);
+            }
+            window.AlertManager.postMessage(promptUrl);
+          } else {
+            console.error('❌ Invalid prompt message');
+          }
+        } else {
+          console.error('❌ AlertManager not available');
+        }
+      },
+      
+      // Contact System
       getAllContacts: function() {
         console.log('📞 Getting all contacts...');
         if (window.ContactsManager) {
@@ -1419,7 +1688,7 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Take screenshot
+      // Screenshot System
       takeScreenshot: function() {
         console.log('📸 Taking screenshot...');
         if (window.ScreenshotManager) {
@@ -1429,7 +1698,7 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Save image from URL
+      // Image Save System
       saveImage: function(imageUrl) {
         console.log('🖼️ Saving image:', imageUrl);
         if (window.ImageSaver) {
@@ -1443,7 +1712,7 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Save PDF from URL - ENHANCED
+      // PDF Save System
       savePdf: function(pdfUrl) {
         console.log('📄 Saving PDF:', pdfUrl);
         if (window.PdfSaver) {
@@ -1466,7 +1735,7 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Get current location
+      // Location System
       getCurrentLocation: function() {
         console.log('🌍 Getting current location...');
         if (window.LocationManager) {
@@ -1476,7 +1745,7 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Scan barcode
+      // Barcode System
       scanBarcode: function() {
         console.log('📸 Scanning barcode...');
         if (window.BarcodeScanner) {
@@ -1486,17 +1755,30 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Change theme
+      scanBarcodeContinuous: function() {
+        console.log('📸 Scanning barcode (continuous)...');
+        if (window.BarcodeScanner) {
+          window.BarcodeScanner.postMessage('scanContinuous');
+        } else {
+          console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      // Theme System
       setTheme: function(theme) {
         console.log('🎨 Setting theme to:', theme);
         if (window.ThemeManager) {
-          window.ThemeManager.postMessage(theme);
+          if (['dark', 'light', 'system'].includes(theme)) {
+            window.ThemeManager.postMessage(theme);
+          } else {
+            console.error('❌ Invalid theme. Use: dark, light, or system');
+          }
         } else {
           console.error('❌ ThemeManager not available');
         }
       },
       
-      // Logout
+      // Auth System
       logout: function() {
         console.log('🚪 Logging out...');
         if (window.AuthManager) {
@@ -1534,7 +1816,38 @@ void _injectJavaScript(WebViewController controller) {
         return pdfLinks.length;
       },
       
+      // Save all images on page
+      saveAllImages: function() {
+        var images = document.querySelectorAll('img[src]');
+        console.log('🖼️ Found', images.length, 'images');
+        
+        images.forEach((img, index) => {
+          setTimeout(() => {
+            this.saveImage(img.src);
+          }, index * 500); // 0.5 second delay between each save
+        });
+        
+        return images.length;
+      },
+      
+      // Mass alert function
+      showMultipleAlerts: function(messages) {
+        if (Array.isArray(messages)) {
+          messages.forEach((msg, index) => {
+            setTimeout(() => {
+              this.showAlert(msg);
+            }, index * 1000);
+          });
+        } else {
+          console.error('❌ Messages must be an array');
+        }
+      },
+      
       // Check availability functions
+      isAlertAvailable: function() {
+        return !!window.AlertManager;
+      },
+      
       isContactsAvailable: function() {
         return !!window.ContactsManager;
       },
@@ -1559,34 +1872,65 @@ void _injectJavaScript(WebViewController controller) {
         return !!window.PdfSaver;
       },
       
+      isThemeAvailable: function() {
+        return !!window.ThemeManager;
+      },
+      
+      isAuthAvailable: function() {
+        return !!window.AuthManager;
+      },
+      
       // Get all available features
       getAvailableFeatures: function() {
         return {
+          alerts: this.isAlertAvailable(),
           contacts: this.isContactsAvailable(),
           location: this.isLocationAvailable(),
           barcode: this.isBarcodeAvailable(),
           screenshot: this.isScreenshotAvailable(),
           imageSaver: this.isImageSaverAvailable(),
-          pdfSaver: this.isPdfSaverAvailable()
+          pdfSaver: this.isPdfSaverAvailable(),
+          theme: this.isThemeAvailable(),
+          auth: this.isAuthAvailable()
         };
       },
       
-      version: '1.0.0'
+      // Debug info
+      getDebugInfo: function() {
+        return {
+          version: this.version,
+          userAgent: navigator.userAgent,
+          features: this.getAvailableFeatures(),
+          url: window.location.href,
+          timestamp: new Date().toISOString()
+        };
+      },
+      
+      version: '1.1.0'
     };
 
-    // Enhanced logging and ready event
+    // Enhanced logging with complete feature set
     console.log("✅ ERPForever WebView JavaScript ready!");
     console.log("📚 Usage examples:");
-    console.log("  - window.ERPForever.getAllContacts()");
-    console.log("  - window.ERPForever.getCurrentLocation()");
-    console.log("  - window.ERPForever.takeScreenshot()");
-    console.log("  - window.ERPForever.saveImage('https://example.com/image.jpg')");
-    console.log("  - window.ERPForever.savePdf('https://example.com/document.pdf')");
-    console.log("  - window.ERPForever.savePdfFromPage() // Auto-find PDF on page");
-    console.log("  - window.ERPForever.saveAllPdfs() // Save all PDFs on page");
-    console.log("  - window.ERPForever.scanBarcode()");
-    console.log("  - window.ERPForever.setTheme('dark')");
-    console.log("  - window.ERPForever.logout()");
+    console.log("  🚨 Alerts:");
+    console.log("    - window.ERPForever.showAlert('Hello World!')");
+    console.log("    - window.ERPForever.showConfirm('Are you sure?')");
+    console.log("    - window.ERPForever.showPrompt('Enter name:', 'Default')");
+    console.log("    - <a href='alert://Hello%20World!'>Show Alert</a>");
+    console.log("  📞 Contacts:");
+    console.log("    - window.ERPForever.getAllContacts()");
+    console.log("  🌍 Location:");
+    console.log("    - window.ERPForever.getCurrentLocation()");
+    console.log("  📸 Media:");
+    console.log("    - window.ERPForever.takeScreenshot()");
+    console.log("    - window.ERPForever.saveImage('https://example.com/image.jpg')");
+    console.log("    - window.ERPForever.savePdf('https://example.com/document.pdf')");
+    console.log("  🎨 Theme:");
+    console.log("    - window.ERPForever.setTheme('dark')");
+    console.log("  📱 Barcode:");
+    console.log("    - window.ERPForever.scanBarcode()");
+    console.log("  🚪 Auth:");
+    console.log("    - window.ERPForever.logout()");
     
     // Global error handler for better debugging
     window.addEventListener('error', function(e) {
@@ -1602,12 +1946,12 @@ void _injectJavaScript(WebViewController controller) {
     });
     document.dispatchEvent(readyEvent);
     
-    // Auto-detect and highlight PDF links on page
+    // Auto-detect and highlight interactive elements
     setTimeout(function() {
+      // Highlight PDF links
       var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
       console.log('📄 Found', pdfLinks.length, 'PDF links on page');
       
-      // Optional: Add visual indicator for PDF links
       pdfLinks.forEach(function(link) {
         if (!link.classList.contains('pdf-detected')) {
           link.classList.add('pdf-detected');
@@ -1623,9 +1967,27 @@ void _injectJavaScript(WebViewController controller) {
           }
         }
       });
+      
+      // Highlight images that can be saved
+      var images = document.querySelectorAll('img[src]');
+      console.log('🖼️ Found', images.length, 'images on page');
+      
+      // Highlight elements with alert data attributes
+      var alertElements = document.querySelectorAll('[data-alert], [data-confirm], [data-prompt]');
+      console.log('🚨 Found', alertElements.length, 'elements with alert attributes');
+      
+      alertElements.forEach(function(element) {
+        if (!element.classList.contains('alert-detected')) {
+          element.classList.add('alert-detected');
+          element.style.cursor = 'pointer';
+          element.title = element.title || 'Click to show alert';
+        }
+      });
+      
     }, 1000);
     
-    console.log("🎉 ERPForever WebView fully initialized with PDF support!");
+    console.log("🎉 ERPForever WebView fully initialized with complete feature set!");
+    console.log("🔧 Debug info:", window.ERPForever.getDebugInfo());
   ''');
 }
   // Update context

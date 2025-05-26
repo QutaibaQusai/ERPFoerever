@@ -17,13 +17,13 @@
         { 
           "title": "First",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-          "link": "https://erpforever.com/mobile",
+          "link": "https://mobile.erpforever.com/",
           "link_type": "sheet_webview"
         },
         {
           "title": "First",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-          "link": "https://erpforever.com/mobile",
+          "link": "https://mobile.erpforever.com/",
           "link_type": "regular_webview"
         }
       ]
@@ -55,13 +55,13 @@
       "title": "Sheet First",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
-      "link": "https://erpforever.com/mobile",
+      "link": "https://mobile.erpforever.com/",
       "link_type": "regular_webview",
       "header_icons": [
         {
           "title": "Sheet First Sub",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-          "link": "https://erpforever.com/mobile",
+          "link": "https://mobile.erpforever.com/",
           "link_type": "sheet_webview"
         }
       ]

@@ -1,4 +1,4 @@
-// lib/pages/main_screen.dart
+// lib/pages/main_screen.dart - FIXED JavaScript Channel Issue
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -26,6 +26,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final Map<int, bool> _loadingStates = {};
   final Map<int, bool> _isAtTopStates = {}; // Track if each webview is at top
   final Map<int, bool> _isRefreshingStates = {}; // Track refresh state per tab
+  final Map<int, bool> _channelAdded = {}; // Track if JavaScript channel is added
 
   @override
   void initState() {
@@ -43,6 +44,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         _loadingStates[i] = true;
         _isAtTopStates[i] = true; // Initially at top
         _isRefreshingStates[i] = false;
+        _channelAdded[i] = false; // Track channel addition
       }
     }
   }
@@ -235,66 +237,82 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _injectScrollMonitoring(WebViewController controller, int index) {
-    // Add JavaScript channel first
-    controller.addJavaScriptChannel(
-      'ScrollMonitor_$index',
-      onMessageReceived: (JavaScriptMessage message) {
-        try {
-          final isAtTop = message.message == 'true';
-          
-          if (mounted && _isAtTopStates[index] != isAtTop) {
-            setState(() {
-              _isAtTopStates[index] = isAtTop;
-            });
-            debugPrint('📍 Tab $index scroll position: ${isAtTop ? "TOP" : "SCROLLED"}');
-          }
-        } catch (e) {
-          debugPrint('❌ Error parsing scroll message: $e');
-        }
-      },
-    );
+    // FIXED: Check if channel is already added to prevent duplicate channel error
+    if (_channelAdded[index] == true) {
+      debugPrint('📍 JavaScript channel already added for tab $index, skipping...');
+      return;
+    }
 
-    // Then inject the monitoring script
-    controller.runJavaScript('''
-      (function() {
-        let isAtTop = true;
-        let scrollTimeout;
-        const channelName = 'ScrollMonitor_$index';
-        
-        function checkScrollPosition() {
-          const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-          const newIsAtTop = scrollTop <= 5; // Very small threshold
-          
-          if (newIsAtTop !== isAtTop) {
-            isAtTop = newIsAtTop;
+    try {
+      // Add JavaScript channel first
+      controller.addJavaScriptChannel(
+        'ScrollMonitor_$index',
+        onMessageReceived: (JavaScriptMessage message) {
+          try {
+            final isAtTop = message.message == 'true';
             
-            // Send to Flutter
-            if (window[channelName] && window[channelName].postMessage) {
-              window[channelName].postMessage(isAtTop.toString());
+            if (mounted && _isAtTopStates[index] != isAtTop) {
+              setState(() {
+                _isAtTopStates[index] = isAtTop;
+              });
+              debugPrint('📍 Tab $index scroll position: ${isAtTop ? "TOP" : "SCROLLED"}');
+            }
+          } catch (e) {
+            debugPrint('❌ Error parsing scroll message: $e');
+          }
+        },
+      );
+
+      // Mark channel as added
+      _channelAdded[index] = true;
+      debugPrint('✅ JavaScript channel added for tab $index');
+
+      // Then inject the monitoring script
+      controller.runJavaScript('''
+        (function() {
+          let isAtTop = true;
+          let scrollTimeout;
+          const channelName = 'ScrollMonitor_$index';
+          
+          function checkScrollPosition() {
+            const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+            const newIsAtTop = scrollTop <= 5; // Very small threshold
+            
+            if (newIsAtTop !== isAtTop) {
+              isAtTop = newIsAtTop;
+              
+              // Send to Flutter
+              if (window[channelName] && window[channelName].postMessage) {
+                window[channelName].postMessage(isAtTop.toString());
+              }
             }
           }
-        }
-        
-        // Optimized scroll listener
-        function onScroll() {
-          if (scrollTimeout) {
-            clearTimeout(scrollTimeout);
+          
+          // Optimized scroll listener
+          function onScroll() {
+            if (scrollTimeout) {
+              clearTimeout(scrollTimeout);
+            }
+            scrollTimeout = setTimeout(checkScrollPosition, 50);
           }
-          scrollTimeout = setTimeout(checkScrollPosition, 50);
-        }
-        
-        // Remove existing listeners
-        window.removeEventListener('scroll', onScroll);
-        
-        // Add scroll listener
-        window.addEventListener('scroll', onScroll, { passive: true });
-        
-        // Initial check
-        setTimeout(checkScrollPosition, 100);
-        
-        console.log('✅ Scroll monitoring initialized for tab $index');
-      })();
-    ''');
+          
+          // Remove existing listeners
+          window.removeEventListener('scroll', onScroll);
+          
+          // Add scroll listener
+          window.addEventListener('scroll', onScroll, { passive: true });
+          
+          // Initial check
+          setTimeout(checkScrollPosition, 100);
+          
+          console.log('✅ Scroll monitoring initialized for tab $index');
+        })();
+      ''');
+    } catch (e) {
+      debugPrint('❌ Error adding JavaScript channel for tab $index: $e');
+      // Reset the flag if there was an error
+      _channelAdded[index] = false;
+    }
   }
 
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
@@ -452,5 +470,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         _selectedIndex = index;
       });
     }
+  }
+
+  @override
+  void dispose() {
+    // Clean up when disposing
+    _controllerManager.clearControllers();
+    super.dispose();
   }
 }

@@ -1,4 +1,3 @@
-
 // lib/services/auth_service.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -53,8 +52,27 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<void> logout() async {
+    try {
+      debugPrint('🔄 Attempting to clear login state...');
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_isLoggedInKey, false);
+      
+      _isLoggedIn = false;
+      notifyListeners();
+      
+      debugPrint('✅ User logged out and state cleared from SharedPreferences');
+    } catch (e) {
+      debugPrint('❌ Error clearing login state: $e');
+      // Even if SharedPreferences fails, we still logout the session
+      _isLoggedIn = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> checkAuthState() async {
     await _loadAuthState();
     return _isLoggedIn;
   }
-}     
+}

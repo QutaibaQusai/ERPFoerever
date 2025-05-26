@@ -5,8 +5,10 @@ import 'package:provider/provider.dart';
 import 'package:ERPForever/models/link_types.dart';
 import 'package:ERPForever/pages/webview_page.dart';
 import 'package:ERPForever/pages/barcode_scanner_page.dart';
+import 'package:ERPForever/pages/login_page.dart';
 import 'package:ERPForever/widgets/webview_sheet.dart';
 import 'package:ERPForever/services/theme_service.dart';
+import 'package:ERPForever/services/auth_service.dart';
 
 class WebViewService {
   static final WebViewService _instance = WebViewService._internal();
@@ -59,7 +61,7 @@ class WebViewService {
   }
 
   WebViewController createController(String url, [BuildContext? context]) {
-    // Store context for theme changes and scanner
+    // Store context for theme changes, scanner, and logout
     _currentContext = context;
     
     // Create the controller first
@@ -81,6 +83,13 @@ class WebViewService {
         onMessageReceived: (JavaScriptMessage message) {
           debugPrint('Theme message: ${message.message}');
           _handleThemeChange(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'AuthManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('Auth message: ${message.message}');
+          _handleAuthRequest(message.message);
         },
       )
       ..addJavaScriptChannel(
@@ -126,6 +135,11 @@ class WebViewService {
       _handleThemeChange('system');
       return NavigationDecision.prevent;
     } 
+    // Handle logout requests
+    else if (request.url.startsWith('logout://')) {
+      _handleAuthRequest('logout');
+      return NavigationDecision.prevent;
+    }
     // Handle barcode scanning requests
     else if (request.url.contains('barcode') || request.url.contains('scan')) {
       bool isContinuous = request.url.contains('continuous');
@@ -138,6 +152,65 @@ class WebViewService {
     }
 
     return NavigationDecision.navigate;
+  }
+
+  void _handleAuthRequest(String message) {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for auth request');
+      return;
+    }
+
+    if (message == 'logout') {
+      debugPrint('🚪 Logout requested from WebView');
+      _performLogout();
+    }
+  }
+
+  void _performLogout() async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for logout');
+      return;
+    }
+
+    try {
+      // Get the AuthService and logout
+      final authService = Provider.of<AuthService>(_currentContext!, listen: false);
+      await authService.logout();
+
+      debugPrint('✅ User logged out successfully');
+
+      // Show feedback
+      ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        const SnackBar(
+          content: Text('Logged out successfully'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+
+      // Navigate to login page and clear navigation stack
+      Navigator.of(_currentContext!).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => const LoginPage(),
+        ),
+        (route) => false, // Remove all previous routes
+      );
+
+    } catch (e) {
+      debugPrint('❌ Error during logout: $e');
+      
+      // Show error message
+      ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        const SnackBar(
+          content: Text('Error during logout'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _handleBarcodeRequest(String message) {
@@ -288,6 +361,11 @@ class WebViewService {
               console.log('System mode requested');
               window.ThemeManager.postMessage('system');
               return false;
+            } else if (href.startsWith('logout://')) {
+              e.preventDefault();
+              console.log('Logout requested');
+              window.AuthManager.postMessage('logout');
+              return false;
             }
           }
           element = element.parentElement;
@@ -316,6 +394,26 @@ class WebViewService {
               console.log('📸 Normal barcode scan requested');
               window.BarcodeScanner.postMessage('scan');
             }
+            return false;
+          }
+          element = element.parentElement;
+        }
+      }, true);
+
+      // Enhanced logout handling
+      document.addEventListener('click', function(e) {
+        let element = e.target;
+        for (let i = 0; i < 4 && element; i++) {
+          // Check for logout button/link
+          if (element.getAttribute('href')?.includes('logout') ||
+              element.id?.includes('logout') ||
+              element.className?.includes('logout') ||
+              element.textContent?.toLowerCase().includes('logout') ||
+              element.textContent?.toLowerCase().includes('log out') ||
+              element.textContent?.toLowerCase().includes('sign out')) {
+            e.preventDefault();
+            console.log('🚪 Logout button clicked');
+            window.AuthManager.postMessage('logout');
             return false;
           }
           element = element.parentElement;
@@ -366,7 +464,7 @@ class WebViewService {
         }
       };
 
-      console.log("✅ Dynamic WebView JavaScript initialized with separate normal/continuous barcode support");
+      console.log("✅ Dynamic WebView JavaScript initialized with logout, barcode, and theme support");
     ''');
   }
 

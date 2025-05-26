@@ -89,18 +89,15 @@ class _LoginPageState extends State<LoginPage> {
     
     return Scaffold(
       backgroundColor: isDarkMode ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        title: const Text('Login'),
-        automaticallyImplyLeading: false,
-        backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-        elevation: 0,
-      ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading) 
-            const LoadingWidget(message: "Loading login page..."),
-        ],
+     
+      body: SafeArea(
+        child: Stack(
+          children: [
+            WebViewWidget(controller: _controller),
+            if (_isLoading) 
+              const LoadingWidget(message: "Loading login page..."),
+          ],
+        ),
       ),
     );
   }

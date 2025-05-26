@@ -1,4 +1,4 @@
-// lib/pages/main_screen.dart - FIXED JavaScript Channel Issue
+// lib/pages/main_screen.dart - UPDATED with Logout Support
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -6,10 +6,12 @@ import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/webview_service.dart';
 import 'package:ERPForever/services/webview_controller_manager.dart';
 import 'package:ERPForever/services/theme_service.dart';
+import 'package:ERPForever/services/auth_service.dart';
 import 'package:ERPForever/widgets/dynamic_bottom_navigation.dart';
 import 'package:ERPForever/widgets/dynamic_app_bar.dart';
 import 'package:ERPForever/widgets/loading_widget.dart';
 import 'package:ERPForever/pages/barcode_scanner_page.dart';
+import 'package:ERPForever/pages/login_page.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -325,6 +327,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       return NavigationDecision.prevent;
     }
 
+    if (request.url.startsWith('logout://')) {
+      _handleLogoutRequest();
+      return NavigationDecision.prevent;
+    }
+
     if (request.url.startsWith('new-web://')) {
       _handleNewWebNavigation(request.url);
       return NavigationDecision.prevent;
@@ -341,6 +348,56 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
 
     return NavigationDecision.navigate;
+  }
+
+  void _handleLogoutRequest() {
+    debugPrint('🚪 Logout requested from WebView');
+    _performLogout();
+  }
+
+  void _performLogout() async {
+    try {
+      // Get the AuthService and logout
+      final authService = Provider.of<AuthService>(context, listen: false);
+      await authService.logout();
+
+      debugPrint('✅ User logged out successfully');
+
+      // Show feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Logged out successfully'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // Navigate to login page and clear navigation stack
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => const LoginPage(),
+          ),
+          (route) => false, // Remove all previous routes
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error during logout: $e');
+      
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error during logout'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _handleThemeChangeRequest(String url) {

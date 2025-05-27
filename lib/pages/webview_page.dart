@@ -22,8 +22,8 @@ class WebViewPage extends StatefulWidget {
 class _WebViewPageState extends State<WebViewPage> {
   late WebViewController _controller;
   bool _isLoading = true;
-  bool _isAtTop = true; // Track if webview is at top
-  bool _isRefreshing = false; // Track refresh state
+  bool _isAtTop = true; 
+  bool _isRefreshing = false; 
   final String _channelName = 'RegularWebViewScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
 
   @override
@@ -33,11 +33,9 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _initializeWebView() {
-    // UPDATED: Use WebViewService.createController() instead of manual creation
-    // This ensures all JavaScript bridges are available
+
     _controller = WebViewService().createController(widget.url, context);
     
-    // Add JavaScript channel for scroll monitoring (this is additional to WebViewService channels)
     _controller.addJavaScriptChannel(
       _channelName,
       onMessageReceived: (JavaScriptMessage message) {
@@ -60,15 +58,11 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _setupLoadingListener() {
-    // DON'T override the NavigationDelegate - WebViewService already set it up with all the bridges!
-    // Instead, we'll monitor loading states by checking if the controller is available
-    
-    // Monitor loading state
+
     _checkLoadingState();
   }
   
   void _checkLoadingState() async {
-    // Wait a bit for the controller to be ready
     await Future.delayed(const Duration(milliseconds: 100));
     
     if (mounted) {
@@ -76,14 +70,12 @@ class _WebViewPageState extends State<WebViewPage> {
         _isLoading = false;
       });
       
-      // Add delay to ensure page is fully rendered, then inject scroll monitoring
       await Future.delayed(const Duration(milliseconds: 500));
       _injectScrollMonitoring();
     }
   }
 
   void _injectScrollMonitoring() {
-    // Inject scroll monitoring script (same as main_icons)
     _controller.runJavaScript('''
       (function() {
         let isAtTop = true;
@@ -138,7 +130,7 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   Future<void> _refreshWebView() async {
-    if (_isRefreshing) return; // Prevent multiple refreshes
+    if (_isRefreshing) return; 
     
     debugPrint('🔄 Refreshing Regular WebView');
     
@@ -149,7 +141,6 @@ class _WebViewPageState extends State<WebViewPage> {
     try {
       await _controller.reload();
       
-      // Wait for page to start loading
       await Future.delayed(const Duration(milliseconds: 800));
       
       debugPrint('✅ Regular WebView refreshed successfully');
@@ -187,9 +178,10 @@ class _WebViewPageState extends State<WebViewPage> {
     );
   }
 
-  // Same structure as main_icons
   Widget _buildRefreshableWebViewContent(bool isDarkMode) {
     return RefreshIndicator(
+      backgroundColor: isDarkMode?Colors.black:Colors.white,
+      color: isDarkMode?Colors.white:Colors.black,
       onRefresh: _refreshWebView,
       child: SingleChildScrollView(
         physics: _isAtTop 

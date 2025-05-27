@@ -14,6 +14,9 @@ class DynamicTheme {
     final backgroundColor = config != null
         ? _hexToColor(config.theme.lightBackground)
         : const Color(0xFFF5F5F5);
+    
+    // Get text direction
+    final isRTL = config?.theme.isRTL ?? false;
 
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(seedColor: primaryColor),
@@ -27,8 +30,17 @@ class DynamicTheme {
           fontSize: 24,
           fontWeight: FontWeight.bold,
         ),
+        // RTL support for AppBar
+        centerTitle: false,
+        titleSpacing: isRTL ? 0 : NavigationToolbar.kMiddleSpacing,
       ),
-      textTheme: baseTextTheme,
+      // RTL-aware text theme
+      textTheme: baseTextTheme.apply(
+        // For RTL, we might want to adjust text alignment
+        fontFamily: isRTL ? 'Tajawal' : null,
+      ),
+      // RTL-aware visual density
+      visualDensity: VisualDensity.adaptivePlatformDensity,
       useMaterial3: true,
     );
   }
@@ -47,6 +59,9 @@ class DynamicTheme {
     final surfaceColor = config != null
         ? _hexToColor(config.theme.darkSurface)
         : const Color(0xFF1E1E1E);
+    
+    // Get text direction
+    final isRTL = config?.theme.isRTL ?? false;
 
     return ThemeData(
       colorScheme: ColorScheme.fromSeed(
@@ -63,12 +78,18 @@ class DynamicTheme {
           fontSize: 24,
           fontWeight: FontWeight.bold,
         ),
+        // RTL support for AppBar
+        centerTitle: false,
+        titleSpacing: isRTL ? 0 : NavigationToolbar.kMiddleSpacing,
       ),
       textTheme: baseTextTheme.apply(
         bodyColor: Colors.white,
         displayColor: Colors.white,
+        // For RTL, we might want to adjust text alignment
+        fontFamily: isRTL ? 'Tajawal' : null,
       ),
       bottomAppBarTheme: BottomAppBarTheme(color: surfaceColor),
+      visualDensity: VisualDensity.adaptivePlatformDensity,
       useMaterial3: true,
     );
   }

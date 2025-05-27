@@ -4,11 +4,12 @@
     "lightBackground": "#F5F5F5",
     "darkBackground": "#121212",
     "darkSurface": "#1E1E1E",
-    "defaultMode": "system"
+    "defaultMode": "system",
+    "direction": "RTL"
   },
   "main_icons": [
     {
-      "title": "First",
+      "title": "اول",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
       "link": "https://mobile.erpforever.com/",
@@ -28,8 +29,8 @@
         }
       ]
     },
-    {
-      "title": "Second",
+    { 
+      "title": "ثاني",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
       "link": "https://mujeer.com/admin",

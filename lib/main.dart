@@ -55,16 +55,28 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer3<ConfigService, ThemeService, AuthService>(
       builder: (context, configService, themeService, authService, child) {
-
         final shouldShowMainScreen = isLoggedIn ?? authService.isLoggedIn;
         
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'ERPForever',
-          themeMode: themeService.themeMode,
-          theme: DynamicTheme.buildLightTheme(configService.config),
-          darkTheme: DynamicTheme.buildDarkTheme(configService.config),
-          home: ScreenshotWrapper(child: shouldShowMainScreen ? const MainScreen() : const LoginPage()),
+        final textDirection = configService.getTextDirection();
+
+        return Directionality(
+          textDirection: textDirection,
+          child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'ERPForever',
+            themeMode: themeService.themeMode,
+            theme: DynamicTheme.buildLightTheme(configService.config),
+            darkTheme: DynamicTheme.buildDarkTheme(configService.config),
+            home: ScreenshotWrapper(
+              child: shouldShowMainScreen ? const MainScreen() : const LoginPage()
+            ),
+            builder: (context, widget) {
+              return Directionality(
+                textDirection: textDirection,
+                child: widget ?? Container(),
+              );
+            },
+          ),
         );
       },
     );

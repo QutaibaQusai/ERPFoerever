@@ -24,23 +24,26 @@ class DynamicAppBar extends StatelessWidget implements PreferredSizeWidget {
     final titleColor = isDarkMode ? Colors.white : Colors.black;
 
     return AppBar(
-      centerTitle: false,
-      title:
-          selectedIndex == 0
-              ? SizedBox(
-                height: 20,
-                child: Image.asset(
-                  isDarkMode
-                      ? "assets/erpforever-white.png"
-                      : "assets/header_icon.png",
-                ),
-              )
-              : _buildTitle(context, currentItem.title, titleColor),
-      actions: _buildActions(context, currentItem),
-      backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-      elevation: 0,
-      iconTheme: IconThemeData(color: titleColor),
-    );
+  centerTitle: false,
+  title: Padding(
+    padding: const EdgeInsets.only(right: 10.0), 
+    child: selectedIndex == 0
+        ? SizedBox(
+            height: 20,
+            child: Image.asset(
+              isDarkMode
+                  ? "assets/erpforever-white.png"
+                  : "assets/header_icon.png",
+            ),
+          )
+        : _buildTitle(context, currentItem.title, titleColor),
+  ),
+  actions: _buildActions(context, currentItem),
+  backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+  elevation: 0,
+  iconTheme: IconThemeData(color: titleColor),
+);
+
   }
 
   Widget _buildTitle(BuildContext context, String title, Color titleColor) {

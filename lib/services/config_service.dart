@@ -34,6 +34,7 @@ class ConfigService extends ChangeNotifier {
       debugPrint('✅ Configuration loaded successfully');
       debugPrint('📱 Main Icons: ${_config!.mainIcons.length}');
       debugPrint('📋 Sheet Icons: ${_config!.sheetIcons.length}');
+      debugPrint('🌍 Direction: ${_config!.theme.direction}');
       
     } catch (e) {
       _error = 'Failed to load configuration: $e';
@@ -79,6 +80,7 @@ class ConfigService extends ChangeNotifier {
         darkBackground: '#121212',
         darkSurface: '#1E1E1E',
         defaultMode: 'system',
+        direction: 'LTR', // Default direction
       ),
       mainIcons: [
         MainIconModel(
@@ -109,6 +111,18 @@ class ConfigService extends ChangeNotifier {
       default:
         return ThemeMode.system;
     }
+  }
+
+  // New method to get text direction
+  TextDirection getTextDirection() {
+    if (_config == null) return TextDirection.ltr;
+    return _config!.theme.textDirection;
+  }
+
+  // New method to check if RTL
+  bool isRTL() {
+    if (_config == null) return false;
+    return _config!.theme.isRTL;
   }
 
   MainIconModel? getMainIcon(int index) {

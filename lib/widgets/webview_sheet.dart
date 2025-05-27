@@ -1,8 +1,10 @@
-// lib/widgets/webview_sheet.dart - Complete with RefreshIndicator like main_icons
+// lib/widgets/webview_sheet.dart - Updated to use WebViewService
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
+import 'package:ERPForever/services/webview_service.dart';
 
 class WebViewSheet extends StatefulWidget {
   final String url;
@@ -24,8 +26,9 @@ class _WebViewSheetState extends State<WebViewSheet> {
   late WebViewController _controller;
   bool _isLoading = true;
   bool _canGoBack = false;
-  bool _isAtTop = true; // Track if webview is at top
-  bool _isRefreshing = false; // Track refresh state
+  bool _isAtTop = true;
+  bool _isRefreshing = false;
+  Timer? _loadingTimer;
   final String _channelName = 'SheetScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
 
   @override
@@ -35,12 +38,10 @@ class _WebViewSheetState extends State<WebViewSheet> {
   }
 
   void _initializeWebView() {
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15');
+    // Use WebViewService.createController() to get all JavaScript bridges
+    _controller = WebViewService().createController(widget.url, context);
 
-    // Add JavaScript channel for scroll monitoring
+    // Add JavaScript channel for scroll monitoring (additional to WebViewService channels)
     _controller.addJavaScriptChannel(
       _channelName,
       onMessageReceived: (JavaScriptMessage message) {
@@ -58,41 +59,49 @@ class _WebViewSheetState extends State<WebViewSheet> {
       },
     );
 
-    _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
+    // Start monitoring loading state without overriding NavigationDelegate
+    _startLoadingMonitor();
+  }
+
+  void _startLoadingMonitor() {
+    // Monitor loading state periodically
+    _loadingTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        // Check if we can go back
+        final canGoBack = await _controller.canGoBack();
+        
+        if (mounted) {
+          setState(() {
+            _canGoBack = canGoBack;
+          });
+        }
+        
+        // After a few checks, assume page is loaded
+        if (timer.tick >= 5) {
+          timer.cancel();
+          
           if (mounted) {
-            setState(() {
-              _isLoading = true;
-              _isAtTop = true; // Reset to top when new page loads
-            });
-          }
-        },
-        onPageFinished: (String url) async {
-          if (mounted) {
-            final canGoBack = await _controller.canGoBack();
             setState(() {
               _isLoading = false;
-              _canGoBack = canGoBack;
             });
+            
             _enableScrolling();
             
-            // Add delay before scroll monitoring
+            // Wait a bit more then inject scroll monitoring
             await Future.delayed(const Duration(milliseconds: 500));
             _injectScrollMonitoring();
           }
-        },
-        onWebResourceError: (WebResourceError error) {
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-          }
-        },
-      ),
-    );
-
-    _controller.loadRequest(Uri.parse(widget.url));
+        }
+      } catch (e) {
+        // Controller might not be ready yet, continue monitoring
+        debugPrint('Loading monitor error: $e');
+      }
+    });
   }
 
   void _enableScrolling() {
@@ -117,12 +126,11 @@ class _WebViewSheetState extends State<WebViewSheet> {
       document.documentElement.style.overflow = 'auto';
       document.documentElement.style.height = 'auto';
       
-      console.log('✅ WebView scrolling enabled');
+      console.log('✅ Sheet WebView scrolling enabled');
     ''');
   }
 
   void _injectScrollMonitoring() {
-    // Inject scroll monitoring script (same as main_icons)
     _controller.runJavaScript('''
       (function() {
         let isAtTop = true;
@@ -135,7 +143,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
             document.documentElement.scrollTop || 0,
             document.body.scrollTop || 0
           );
-          const newIsAtTop = scrollTop <= 5; // Same threshold as main_icons
+          const newIsAtTop = scrollTop <= 5;
           
           if (newIsAtTop !== isAtTop) {
             isAtTop = newIsAtTop;
@@ -158,12 +166,26 @@ class _WebViewSheetState extends State<WebViewSheet> {
         
         setTimeout(checkScrollPosition, 100);
         console.log('✅ Sheet scroll monitoring initialized');
+        
+        // Log available services for debugging
+        console.log('🔧 Available services in sheet WebView:', {
+          BarcodeScanner: !!window.BarcodeScanner,
+          LocationManager: !!window.LocationManager,
+          ContactsManager: !!window.ContactsManager,
+          ScreenshotManager: !!window.ScreenshotManager,
+          ImageSaver: !!window.ImageSaver,
+          PdfSaver: !!window.PdfSaver,
+          AlertManager: !!window.AlertManager,
+          ThemeManager: !!window.ThemeManager,
+          AuthManager: !!window.AuthManager,
+          ERPForever: !!window.ERPForever
+        });
       })();
     ''');
   }
 
   Future<void> _refreshWebView() async {
-    if (_isRefreshing) return; // Prevent multiple refreshes
+    if (_isRefreshing) return;
     
     setState(() {
       _isRefreshing = true;
@@ -171,8 +193,6 @@ class _WebViewSheetState extends State<WebViewSheet> {
 
     try {
       await _controller.reload();
-      
-      // Wait for page to start loading
       await Future.delayed(const Duration(milliseconds: 800));
     } catch (e) {
       debugPrint('Error refreshing WebView: $e');
@@ -185,26 +205,23 @@ class _WebViewSheetState extends State<WebViewSheet> {
     }
   }
 
-  // Handle back button for sheet WebView
   Future<bool> _onWillPop() async {
     if (await _controller.canGoBack()) {
       await _controller.goBack();
-      // Update back button state
       final canGoBack = await _controller.canGoBack();
       if (mounted) {
         setState(() {
           _canGoBack = canGoBack;
         });
       }
-      return false; // Don't close the sheet
+      return false;
     }
-    return true; // Close the sheet
+    return true;
   }
 
   Future<void> _goBack() async {
     if (await _controller.canGoBack()) {
       await _controller.goBack();
-      // Update back button state
       final canGoBack = await _controller.canGoBack();
       if (mounted) {
         setState(() {
@@ -234,7 +251,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
             _buildSheetHeader(context, isDarkMode),
             const Divider(height: 1),
             Expanded(
-              child: _buildRefreshableWebViewContent(isDarkMode),
+              child: _buildWebViewContent(isDarkMode),
             ),
           ],
         ),
@@ -242,8 +259,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
     );
   }
 
-  // Simple approach - just WebView with refresh button in header
-  Widget _buildRefreshableWebViewContent(bool isDarkMode) {
+  Widget _buildWebViewContent(bool isDarkMode) {
     return Container(
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.only(
@@ -262,7 +278,8 @@ class _WebViewSheetState extends State<WebViewSheet> {
               ),
             },
           ),
-          if (_isLoading || _isRefreshing) _buildLoadingIndicator(isDarkMode),
+          if (_isLoading || _isRefreshing) 
+            _buildLoadingIndicator(isDarkMode),
         ],
       ),
     );
@@ -330,7 +347,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
                   ),
                 ),
 
-                // Refresh button (appears when at top and page is loaded)
+                // Refresh button
                 if (_isAtTop && !_isLoading)
                   IconButton(
                     icon: Icon(
@@ -396,5 +413,12 @@ class _WebViewSheetState extends State<WebViewSheet> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _loadingTimer?.cancel();
+    WebViewService().dispose();
+    super.dispose();
   }
 }

@@ -352,7 +352,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       return NavigationDecision.prevent;
     }
 
-    // Other navigation requests
+    // Other navigation requests - FIXED URL
     if (request.url.startsWith('new-web://')) {
       _handleNewWebNavigation(request.url);
       return NavigationDecision.prevent;
@@ -635,7 +635,8 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
   }
 
   void _handleNewWebNavigation(String url) {
-    String targetUrl = 'https://www.erpforever.com/mobile/test';
+    // FIXED: Changed default URL to mobile.erpforever.com
+    String targetUrl = 'https://mobile.erpforever.com/';
 
     if (url.contains('?')) {
       try {

@@ -1,4 +1,4 @@
-// lib/pages/webview_page.dart - With RefreshIndicator like main_icons
+// lib/pages/webview_page.dart - Updated to use WebViewService
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -33,9 +33,11 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _initializeWebView() {
-    _controller = WebViewService().createController(widget.url);
+    // UPDATED: Use WebViewService.createController() instead of manual creation
+    // This ensures all JavaScript bridges are available
+    _controller = WebViewService().createController(widget.url, context);
     
-    // Add JavaScript channel for scroll monitoring
+    // Add JavaScript channel for scroll monitoring (this is additional to WebViewService channels)
     _controller.addJavaScriptChannel(
       _channelName,
       onMessageReceived: (JavaScriptMessage message) {
@@ -58,36 +60,26 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _setupLoadingListener() {
-    _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          if (mounted) {
-            setState(() {
-              _isLoading = true;
-              _isAtTop = true; // Reset to top when new page loads
-            });
-          }
-        },
-        onPageFinished: (String url) async {
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-            
-            // Add delay to ensure page is fully rendered
-            await Future.delayed(const Duration(milliseconds: 500));
-            _injectScrollMonitoring();
-          }
-        },
-        onWebResourceError: (WebResourceError error) {
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-          }
-        },
-      ),
-    );
+    // DON'T override the NavigationDelegate - WebViewService already set it up with all the bridges!
+    // Instead, we'll monitor loading states by checking if the controller is available
+    
+    // Monitor loading state
+    _checkLoadingState();
+  }
+  
+  void _checkLoadingState() async {
+    // Wait a bit for the controller to be ready
+    await Future.delayed(const Duration(milliseconds: 100));
+    
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      // Add delay to ensure page is fully rendered, then inject scroll monitoring
+      await Future.delayed(const Duration(milliseconds: 500));
+      _injectScrollMonitoring();
+    }
   }
 
   void _injectScrollMonitoring() {
@@ -127,6 +119,20 @@ class _WebViewPageState extends State<WebViewPage> {
         
         setTimeout(checkScrollPosition, 100);
         console.log('✅ Regular WebView scroll monitoring initialized');
+        
+        // Log available services for debugging
+        console.log('🔧 Available services in regular WebView:', {
+          BarcodeScanner: !!window.BarcodeScanner,
+          LocationManager: !!window.LocationManager,
+          ContactsManager: !!window.ContactsManager,
+          ScreenshotManager: !!window.ScreenshotManager,
+          ImageSaver: !!window.ImageSaver,
+          PdfSaver: !!window.PdfSaver,
+          AlertManager: !!window.AlertManager,
+          ThemeManager: !!window.ThemeManager,
+          AuthManager: !!window.AuthManager,
+          ERPForever: !!window.ERPForever
+        });
       })();
     ''');
   }
@@ -205,5 +211,12 @@ class _WebViewPageState extends State<WebViewPage> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // Clean up WebViewService
+    WebViewService().dispose();
+    super.dispose();
   }
 }

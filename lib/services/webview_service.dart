@@ -16,7 +16,6 @@ import 'package:ERPForever/services/image_saver_service.dart';
 import 'package:ERPForever/services/pdf_saver_service.dart';
 import 'package:ERPForever/services/alert_service.dart';
 
-
 class WebViewService {
   static final WebViewService _instance = WebViewService._internal();
   factory WebViewService() => _instance;
@@ -32,7 +31,7 @@ class WebViewService {
     String? title,
   }) {
     final type = LinkType.fromString(linkType);
-    
+
     switch (type) {
       case LinkType.regularWebview:
         _navigateToRegularWebView(context, url, title ?? 'Web View');
@@ -43,14 +42,15 @@ class WebViewService {
     }
   }
 
-  void _navigateToRegularWebView(BuildContext context, String url, String title) {
+  void _navigateToRegularWebView(
+    BuildContext context,
+    String url,
+    String title,
+  ) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => WebViewPage(
-          url: url,
-          title: title,
-        ),
+        builder: (context) => WebViewPage(url: url, title: title),
       ),
     );
   }
@@ -60,23 +60,20 @@ class WebViewService {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => WebViewSheet(
-        url: url,
-        title: title,
-      ),
+      builder: (context) => WebViewSheet(url: url, title: title),
     );
   }
 
   WebViewController createController(String url, [BuildContext? context]) {
     debugPrint('🌐 Creating WebView controller for: $url');
-    
+
     // Store context for interactions
     _currentContext = context;
-    
+
     // Create the controller
     final controller = WebViewController();
     _currentController = controller;
-    
+
     // Configure the controller
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -131,19 +128,21 @@ class WebViewService {
           debugPrint('🖼️ Image saver message: ${message.message}');
           _handleImageSaveRequest(message.message);
         },
-      )..addJavaScriptChannel(
-  'PdfSaver',
-  onMessageReceived: (JavaScriptMessage message) {
-    debugPrint('📄 PDF saver message: ${message.message}');
-    _handlePdfSaveRequest(message.message);
-  },
-)..addJavaScriptChannel(
-  'AlertManager',
-  onMessageReceived: (JavaScriptMessage message) {
-    debugPrint('🚨 Alert message: ${message.message}');
-    _handleAlertRequest(message.message);
-  },
-)
+      )
+      ..addJavaScriptChannel(
+        'PdfSaver',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📄 PDF saver message: ${message.message}');
+          _handlePdfSaveRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'AlertManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🚨 Alert message: ${message.message}');
+          _handleAlertRequest(message.message);
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
@@ -152,7 +151,7 @@ class WebViewService {
           onPageFinished: (String url) {
             debugPrint('✅ Page finished loading: $url');
             _injectJavaScript(controller);
-            
+
             // Make WebView content screenshot-ready
             controller.runJavaScript('''
               // Enable hardware acceleration for screenshots
@@ -167,7 +166,6 @@ class WebViewService {
               
               console.log("✅ WebView optimized for screenshots");
             ''');
-            
           },
           onNavigationRequest: (NavigationRequest request) {
             debugPrint('🔄 Navigation request: ${request.url}');
@@ -182,17 +180,13 @@ class WebViewService {
 
     // Load the URL
     controller.loadRequest(Uri.parse(url));
-    
+
     return controller;
   }
 
-
-
-
-
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
-    
+
     // Handle theme requests
     if (request.url.startsWith('dark-mode://')) {
       _handleThemeChange('dark');
@@ -228,23 +222,21 @@ class WebViewService {
     else if (request.url.startsWith('save-image://')) {
       _handleImageSaveRequest(request.url);
       return NavigationDecision.prevent;
+    } else if (request.url.startsWith('save-pdf://')) {
+      _handlePdfSaveRequest(request.url);
+      return NavigationDecision.prevent;
     }
-    else if (request.url.startsWith('save-pdf://')) {
-  _handlePdfSaveRequest(request.url);
-  return NavigationDecision.prevent;
-}
-  // Handle alert requests - ADD THIS SECTION
-  if (request.url.startsWith('alert://')) {
-    _handleAlertRequest(request.url);
-    return NavigationDecision.prevent;
-  } else if (request.url.startsWith('confirm://')) {
-    _handleAlertRequest(request.url);
-    return NavigationDecision.prevent;
-  } else if (request.url.startsWith('prompt://')) {
-    _handleAlertRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
+    // Handle alert requests - ADD THIS SECTION
+    if (request.url.startsWith('alert://')) {
+      _handleAlertRequest(request.url);
+      return NavigationDecision.prevent;
+    } else if (request.url.startsWith('confirm://')) {
+      _handleAlertRequest(request.url);
+      return NavigationDecision.prevent;
+    } else if (request.url.startsWith('prompt://')) {
+      _handleAlertRequest(request.url);
+      return NavigationDecision.prevent;
+    }
     // Handle barcode requests
     else if (request.url.contains('barcode') || request.url.contains('scan')) {
       bool isContinuous = request.url.contains('continuous');
@@ -254,66 +246,82 @@ class WebViewService {
 
     return NavigationDecision.navigate;
   }
-  void _handleAlertRequest(String message) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for alert request');
-    return;
-  }
 
-  debugPrint('🚨 Processing alert request: $message');
-  
-  try {
-    Map<String, dynamic> result;
-    String alertType = AlertService().getAlertType(message);
-    
-    switch (alertType) {
-      case 'alert':
-        result = await AlertService().showAlertFromUrl(message, _currentContext!);
-        break;
-      case 'confirm':
-        result = await AlertService().showConfirmFromUrl(message, _currentContext!);
-        break;
-      case 'prompt':
-        result = await AlertService().showPromptFromUrl(message, _currentContext!);
-        break;
-      default:
-        // Fallback: treat as simple alert
-        result = await AlertService().showAlertFromUrl(message, _currentContext!);
-        break;
+  void _handleAlertRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for alert request');
+      return;
     }
 
-    // Send result back to WebView
-    _sendAlertResultToWebView(result, alertType);
+    debugPrint('🚨 Processing alert request: $message');
 
-  } catch (e) {
-    debugPrint('❌ Error handling alert request: $e');
-    
-    _sendAlertResultToWebView({
-      'success': false,
-      'error': 'Failed to handle alert: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR'
-    }, 'alert');
+    try {
+      Map<String, dynamic> result;
+      String alertType = AlertService().getAlertType(message);
+
+      switch (alertType) {
+        case 'alert':
+          result = await AlertService().showAlertFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+        case 'confirm':
+          result = await AlertService().showConfirmFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+        case 'prompt':
+          result = await AlertService().showPromptFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+        default:
+          // Fallback: treat as simple alert
+          result = await AlertService().showAlertFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+      }
+
+      // Send result back to WebView
+      _sendAlertResultToWebView(result, alertType);
+    } catch (e) {
+      debugPrint('❌ Error handling alert request: $e');
+
+      _sendAlertResultToWebView({
+        'success': false,
+        'error': 'Failed to handle alert: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+      }, 'alert');
+    }
   }
-}
-void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
-  if (_currentController == null) {
-    debugPrint('❌ No WebView controller available for alert result');
-    return;
-  }
 
-  debugPrint('📱 Sending alert result to WebView: $alertType');
+  void _sendAlertResultToWebView(
+    Map<String, dynamic> result,
+    String alertType,
+  ) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for alert result');
+      return;
+    }
 
-  final success = result['success'] ?? false;
-  final error = (result['error'] ?? '').replaceAll('"', '\\"');
-  final errorCode = result['errorCode'] ?? '';
-  final message = (result['message'] ?? '').replaceAll('"', '\\"');
-  final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
-  final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
-  final confirmed = result['confirmed'] ?? false;
-  final cancelled = result['cancelled'] ?? false;
-  final dismissed = result['dismissed'] ?? false;
+    debugPrint('📱 Sending alert result to WebView: $alertType');
 
-  _currentController!.runJavaScript('''
+    final success = result['success'] ?? false;
+    final error = (result['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = result['errorCode'] ?? '';
+    final message = (result['message'] ?? '').replaceAll('"', '\\"');
+    final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
+    final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
+    final confirmed = result['confirmed'] ?? false;
+    final cancelled = result['cancelled'] ?? false;
+    final dismissed = result['dismissed'] ?? false;
+
+    _currentController!.runJavaScript('''
     try {
       console.log("🚨 Alert result received: Type=$alertType, Success=$success");
       
@@ -371,156 +379,164 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       console.error("❌ Error handling alert result:", error);
     }
   ''');
-}
-void _handlePdfSaveRequest(String message) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for PDF save request');
-    return;
   }
 
-  debugPrint('📄 Processing PDF save request: $message');
-  
-  // Extract PDF URL from the message
-  String pdfUrl = PdfSaverService().extractPdfUrl(message);
-  
-  if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
-    _sendPdfSaveToWebView({
-      'success': false,
-      'error': 'Invalid PDF URL',
-      'errorCode': 'INVALID_URL',
-      'url': pdfUrl,
-    });
-    return;
+  void _handlePdfSaveRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for PDF save request');
+      return;
+    }
+
+    debugPrint('📄 Processing PDF save request: $message');
+
+    // Extract PDF URL from the message
+    String pdfUrl = PdfSaverService().extractPdfUrl(message);
+
+    if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
+      _sendPdfSaveToWebView({
+        'success': false,
+        'error': 'Invalid PDF URL',
+        'errorCode': 'INVALID_URL',
+        'url': pdfUrl,
+      });
+      return;
+    }
+
+    // Show loading dialog
+    _showPdfSaveLoadingDialog(pdfUrl);
+
+    try {
+      // Save PDF to device
+      Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(
+        message,
+      );
+
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+
+      // Send result to WebView
+      _sendPdfSaveToWebView(result);
+
+      // Show option to open PDF if successful
+      if (result['success'] && result['filePath'] != null) {
+        _showPdfSavedDialog(result['filePath'], result['fileName']);
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling PDF save request: $e');
+
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+
+      _sendPdfSaveToWebView({
+        'success': false,
+        'error': 'Failed to save PDF: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+        'url': pdfUrl,
+      });
+    }
   }
 
-  // Show loading dialog
-  _showPdfSaveLoadingDialog(pdfUrl);
+  void _showPdfSaveLoadingDialog(String pdfUrl) {
+    if (_currentContext == null) return;
 
-  try {
-    // Save PDF to device
-    Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(message);
-
-    // Hide loading dialog
-    if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-      Navigator.of(_currentContext!).pop();
-    }
-
-    // Send result to WebView
-    _sendPdfSaveToWebView(result);
-
-    // Show option to open PDF if successful
-    if (result['success'] && result['filePath'] != null) {
-      _showPdfSavedDialog(result['filePath'], result['fileName']);
-    }
-
-  } catch (e) {
-    debugPrint('❌ Error handling PDF save request: $e');
-    
-    // Hide loading dialog
-    if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-      Navigator.of(_currentContext!).pop();
-    }
-    
-    _sendPdfSaveToWebView({
-      'success': false,
-      'error': 'Failed to save PDF: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-      'url': pdfUrl,
-    });
+    showDialog(
+      context: _currentContext!,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Downloading PDF...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                Uri.parse(pdfUrl).pathSegments.last.replaceAll('.pdf', '') +
+                    '.pdf',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
-}
-void _showPdfSaveLoadingDialog(String pdfUrl) {
-  if (_currentContext == null) return;
 
-  showDialog(
-    context: _currentContext!,
-    barrierDismissible: false,
-    builder: (BuildContext context) {
-      return AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              'Downloading PDF...',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
+  void _showPdfSavedDialog(String filePath, String fileName) {
+    if (_currentContext == null) return;
+
+    showDialog(
+      context: _currentContext!,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.picture_as_pdf, color: Colors.red),
+              SizedBox(width: 8),
+              Text('PDF Saved'),
+            ],
+          ),
+          content: Text(
+            '$fileName has been saved successfully. Would you like to open it?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Later'),
             ),
-            SizedBox(height: 8),
-            Text(
-              Uri.parse(pdfUrl).pathSegments.last.replaceAll('.pdf', '') + '.pdf',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+
+                final result = await PdfSaverService().openPdf(filePath);
+
+                if (!result['success']) {
+                  ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                    SnackBar(
+                      content: Text(result['error'] ?? 'Could not open PDF'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                }
+              },
+              child: Text('Open PDF'),
             ),
           ],
-        ),
-      );
-    },
-  );
-}
-void _showPdfSavedDialog(String filePath, String fileName) {
-  if (_currentContext == null) return;
-
-  showDialog(
-    context: _currentContext!,
-    builder: (BuildContext context) {
-      return AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.picture_as_pdf, color: Colors.red),
-            SizedBox(width: 8),
-            Text('PDF Saved'),
-          ],
-        ),
-        content: Text('$fileName has been saved successfully. Would you like to open it?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Later'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              
-              final result = await PdfSaverService().openPdf(filePath);
-              
-              if (!result['success']) {
-                ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                  SnackBar(
-                    content: Text(result['error'] ?? 'Could not open PDF'),
-                    backgroundColor: Colors.orange,
-                  ),
-                );
-              }
-            },
-            child: Text('Open PDF'),
-          ),
-        ],
-      );
-    },
-  );
-}
-void _sendPdfSaveToWebView(Map<String, dynamic> result) {
-  if (_currentController == null) {
-    debugPrint('❌ No WebView controller available for PDF save result');
-    return;
+        );
+      },
+    );
   }
 
-  debugPrint('📱 Sending PDF save result to WebView');
+  void _sendPdfSaveToWebView(Map<String, dynamic> result) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for PDF save result');
+      return;
+    }
 
-  final success = result['success'] ?? false;
-  final error = (result['error'] ?? '').replaceAll('"', '\\"');
-  final errorCode = result['errorCode'] ?? '';
-  final message = (result['message'] ?? '').replaceAll('"', '\\"');
-  final fileName = (result['fileName'] ?? '').replaceAll('"', '\\"');
-  final fileSize = result['fileSize'] ?? 0;
-  final url = (result['url'] ?? '').replaceAll('"', '\\"');
-  final filePath = (result['filePath'] ?? '').replaceAll('"', '\\"');
+    debugPrint('📱 Sending PDF save result to WebView');
 
-  _currentController!.runJavaScript('''
+    final success = result['success'] ?? false;
+    final error = (result['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = result['errorCode'] ?? '';
+    final message = (result['message'] ?? '').replaceAll('"', '\\"');
+    final fileName = (result['fileName'] ?? '').replaceAll('"', '\\"');
+    final fileSize = result['fileSize'] ?? 0;
+    final url = (result['url'] ?? '').replaceAll('"', '\\"');
+    final filePath = (result['filePath'] ?? '').replaceAll('"', '\\"');
+
+    _currentController!.runJavaScript('''
     try {
       console.log("📄 PDF save result: Success=$success");
       
@@ -557,47 +573,53 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     }
   ''');
 
-  // Show feedback to user
-  if (_currentContext != null) {
-    String feedbackMessage;
-    Color backgroundColor;
-    
-    if (result['success']) {
-      final sizeFormatted = PdfSaverService().formatFileSize(result['fileSize'] ?? 0);
-      feedbackMessage = '${result['message'] ?? 'PDF saved successfully'} ($sizeFormatted)';
-      backgroundColor = Colors.green;
-    } else {
-      feedbackMessage = result['error'] ?? 'Failed to save PDF';
-      backgroundColor = Colors.red;
+    // Show feedback to user
+    if (_currentContext != null) {
+      String feedbackMessage;
+      Color backgroundColor;
+
+      if (result['success']) {
+        final sizeFormatted = PdfSaverService().formatFileSize(
+          result['fileSize'] ?? 0,
+        );
+        feedbackMessage =
+            '${result['message'] ?? 'PDF saved successfully'} ($sizeFormatted)';
+        backgroundColor = Colors.green;
+      } else {
+        feedbackMessage = result['error'] ?? 'Failed to save PDF';
+        backgroundColor = Colors.red;
+      }
+
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text(feedbackMessage),
+          duration: Duration(seconds: 4),
+          backgroundColor: backgroundColor,
+          action:
+              !result['success'] &&
+                      result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+                  ? SnackBarAction(
+                    label: 'Settings',
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      bool opened = await PdfSaverService().openAppSettings();
+                      if (!opened) {
+                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Please enable storage permission in Settings',
+                            ),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    },
+                  )
+                  : null,
+        ),
+      );
     }
-
-    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-      SnackBar(
-        content: Text(feedbackMessage),
-        duration: Duration(seconds: 4),
-        backgroundColor: backgroundColor,
-        action: !result['success'] && result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-          ? SnackBarAction(
-              label: 'Settings',
-              textColor: Colors.white,
-              onPressed: () async {
-                bool opened = await PdfSaverService().openAppSettings();
-                if (!opened) {
-                  ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                    SnackBar(
-                      content: Text('Please enable storage permission in Settings'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
-                }
-              },
-            )
-          : null,
-      ),
-    );
   }
-}
-
 
   /// Handle image save requests
   void _handleImageSaveRequest(String message) async {
@@ -607,10 +629,10 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     }
 
     debugPrint('🖼️ Processing image save request: $message');
-    
+
     // Extract image URL from the message
     String imageUrl = ImageSaverService().extractImageUrl(message);
-    
+
     if (!ImageSaverService().isValidImageUrl(imageUrl)) {
       _sendImageSaveToWebView({
         'success': false,
@@ -626,7 +648,9 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
     try {
       // Save image to gallery
-      Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(message);
+      Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(
+        message,
+      );
 
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
@@ -635,15 +659,14 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
       // Send result to WebView
       _sendImageSaveToWebView(result);
-
     } catch (e) {
       debugPrint('❌ Error handling image save request: $e');
-      
+
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
         Navigator.of(_currentContext!).pop();
       }
-      
+
       _sendImageSaveToWebView({
         'success': false,
         'error': 'Failed to save image: ${e.toString()}',
@@ -742,7 +765,7 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentContext != null) {
       String feedbackMessage;
       Color backgroundColor;
-      
+
       if (result['success']) {
         feedbackMessage = result['message'] ?? 'Image saved successfully';
         backgroundColor = Colors.green;
@@ -756,23 +779,27 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
           content: Text(feedbackMessage),
           duration: Duration(seconds: 3),
           backgroundColor: backgroundColor,
-          action: !result['success'] && result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-            ? SnackBarAction(
-                label: 'Settings',
-                textColor: Colors.white,
-                onPressed: () async {
-                  bool opened = await ImageSaverService().openAppSettings();
-                  if (!opened) {
-                    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                      SnackBar(
-                        content: Text('Please enable storage permission in Settings'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                },
-              )
-            : null,
+          action:
+              !result['success'] &&
+                      result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+                  ? SnackBarAction(
+                    label: 'Settings',
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      bool opened = await ImageSaverService().openAppSettings();
+                      if (!opened) {
+                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Please enable storage permission in Settings',
+                            ),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    },
+                  )
+                  : null,
         ),
       );
     }
@@ -786,7 +813,7 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     }
 
     debugPrint('📸 Processing screenshot request...');
-    
+
     // Show loading dialog
     _showScreenshotLoadingDialog();
 
@@ -795,10 +822,11 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
     try {
       // Use the existing ScreenshotService which should now capture WebView
-      Map<String, dynamic> screenshotResult = await ScreenshotService().takeScreenshotWithOptions(
-        saveToGallery: true,
-        delay: Duration(milliseconds: 200),
-      );
+      Map<String, dynamic> screenshotResult = await ScreenshotService()
+          .takeScreenshotWithOptions(
+            saveToGallery: true,
+            delay: Duration(milliseconds: 200),
+          );
 
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
@@ -807,19 +835,18 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
       // Send result to WebView
       _sendScreenshotToWebView(screenshotResult);
-
     } catch (e) {
       debugPrint('❌ Error taking screenshot: $e');
-      
+
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
         Navigator.of(_currentContext!).pop();
       }
-      
+
       _sendScreenshotToWebView({
         'success': false,
         'error': 'Failed to take screenshot: ${e.toString()}',
-        'errorCode': 'CAPTURE_FAILED'
+        'errorCode': 'CAPTURE_FAILED',
       });
     }
   }
@@ -901,10 +928,10 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentContext != null) {
       String feedbackMessage;
       Color backgroundColor;
-      
+
       if (screenshotData['success']) {
         // Check if it was actually saved to gallery
-        if (screenshotData['actions'] != null && 
+        if (screenshotData['actions'] != null &&
             screenshotData['actions']['gallery'] != null &&
             screenshotData['actions']['gallery']['success'] == true) {
           feedbackMessage = 'Screenshot saved to gallery';
@@ -913,7 +940,8 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
         }
         backgroundColor = Colors.green;
       } else {
-        feedbackMessage = screenshotData['error'] ?? 'Failed to take screenshot';
+        feedbackMessage =
+            screenshotData['error'] ?? 'Failed to take screenshot';
         backgroundColor = Colors.red;
       }
 
@@ -922,23 +950,27 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
           content: Text(feedbackMessage),
           duration: Duration(seconds: 2),
           backgroundColor: backgroundColor,
-          action: !screenshotData['success'] && screenshotData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-            ? SnackBarAction(
-                label: 'Settings',
-                textColor: Colors.white,
-                onPressed: () async {
-                  bool opened = await ScreenshotService().openAppSettings();
-                  if (!opened) {
-                    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                      SnackBar(
-                        content: Text('Please enable storage permission in Settings'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                },
-              )
-            : null,
+          action:
+              !screenshotData['success'] &&
+                      screenshotData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+                  ? SnackBarAction(
+                    label: 'Settings',
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      bool opened = await ScreenshotService().openAppSettings();
+                      if (!opened) {
+                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Please enable storage permission in Settings',
+                            ),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    },
+                  )
+                  : null,
         ),
       );
     }
@@ -952,13 +984,14 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     }
 
     debugPrint('📞 Processing contacts request...');
-    
+
     try {
       // Show loading dialog
       _showContactsLoadingDialog();
 
       // Get all contacts
-      Map<String, dynamic> contactsResult = await AppContactsService().getAllContacts();
+      Map<String, dynamic> contactsResult =
+          await AppContactsService().getAllContacts();
 
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
@@ -967,21 +1000,20 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
       // Send result to WebView
       _sendContactsToWebView(contactsResult);
-
     } catch (e) {
       debugPrint('❌ Error handling contacts request: $e');
-      
+
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
         Navigator.of(_currentContext!).pop();
       }
-      
+
       // Send error to WebView
       _sendContactsToWebView({
         'success': false,
         'error': 'Failed to get contacts: ${e.toString()}',
         'errorCode': 'UNKNOWN_ERROR',
-        'contacts': []
+        'contacts': [],
       });
     }
   }
@@ -1017,7 +1049,9 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
       return;
     }
 
-    debugPrint('📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts');
+    debugPrint(
+      '📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts',
+    );
 
     final success = contactsData['success'] ?? false;
     final error = (contactsData['error'] ?? '').replaceAll('"', '\\"');
@@ -1072,7 +1106,7 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentContext != null) {
       String message;
       Color backgroundColor;
-      
+
       if (contactsData['success']) {
         message = 'Loaded ${contactsData['totalCount']} contacts';
         backgroundColor = Colors.green;
@@ -1084,25 +1118,31 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
         SnackBar(
           content: Text(message),
-          duration: Duration(seconds: 5), // Longer duration for permission messages
+          duration: Duration(
+            seconds: 5,
+          ), // Longer duration for permission messages
           backgroundColor: backgroundColor,
-          action: !contactsData['success'] && contactsData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-            ? SnackBarAction(
-                label: 'Settings',
-                textColor: Colors.white,
-                onPressed: () async {
-                  bool opened = await AppContactsService().openSettings();
-                  if (!opened) {
-                    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                      SnackBar(
-                        content: Text('Please manually open Settings > Apps > ERPForever > Permissions'),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  }
-                },
-              )
-            : null,
+          action:
+              !contactsData['success'] &&
+                      contactsData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
+                  ? SnackBarAction(
+                    label: 'Settings',
+                    textColor: Colors.white,
+                    onPressed: () async {
+                      bool opened = await AppContactsService().openSettings();
+                      if (!opened) {
+                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Please manually open Settings > Apps > ERPForever > Permissions',
+                            ),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                      }
+                    },
+                  )
+                  : null,
         ),
       );
     }
@@ -1116,12 +1156,13 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     }
 
     debugPrint('🌍 Processing location request...');
-    
+
     try {
       // Show loading dialog
       _showLocationLoadingDialog();
 
-      Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
+      Map<String, dynamic> locationResult =
+          await LocationService().getCurrentLocation();
 
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
@@ -1130,19 +1171,18 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
       // Send result to WebView
       _sendLocationToWebView(locationResult);
-
     } catch (e) {
       debugPrint('❌ Error handling location request: $e');
-      
+
       // Hide loading dialog
       if (_currentContext != null && Navigator.canPop(_currentContext!)) {
         Navigator.of(_currentContext!).pop();
       }
-      
+
       _sendLocationToWebView({
         'success': false,
         'error': 'Failed to get location: ${e.toString()}',
-        'errorCode': 'UNKNOWN_ERROR'
+        'errorCode': 'UNKNOWN_ERROR',
       });
     }
   }
@@ -1224,7 +1264,7 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentContext != null) {
       String message;
       Color backgroundColor;
-      
+
       if (locationData['success']) {
         final lat = locationData['latitude']?.toStringAsFixed(6) ?? 'Unknown';
         final lng = locationData['longitude']?.toStringAsFixed(6) ?? 'Unknown';
@@ -1260,7 +1300,10 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentContext == null) return;
 
     try {
-      final authService = Provider.of<AuthService>(_currentContext!, listen: false);
+      final authService = Provider.of<AuthService>(
+        _currentContext!,
+        listen: false,
+      );
       await authService.logout();
 
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
@@ -1274,10 +1317,9 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
         MaterialPageRoute(builder: (context) => const LoginPage()),
         (route) => false,
       );
-
     } catch (e) {
       debugPrint('❌ Error during logout: $e');
-      
+
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
         const SnackBar(
           content: Text('Error during logout'),
@@ -1291,17 +1333,18 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentContext == null) return;
 
     bool isContinuous = message == 'scanContinuous';
-    
+
     Navigator.push(
       _currentContext!,
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (context) => BarcodeScannerPage(
-          isContinuous: isContinuous,
-          onBarcodeScanned: (String barcode) {
-            _sendBarcodeToWebView(barcode, isContinuous);
-          },
-        ),
+        builder:
+            (context) => BarcodeScannerPage(
+              isContinuous: isContinuous,
+              onBarcodeScanned: (String barcode) {
+                _sendBarcodeToWebView(barcode, isContinuous);
+              },
+            ),
       ),
     );
   }
@@ -1347,9 +1390,12 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
   void _handleThemeChange(String themeMode) {
     if (_currentContext != null) {
-      final themeService = Provider.of<ThemeService>(_currentContext!, listen: false);
+      final themeService = Provider.of<ThemeService>(
+        _currentContext!,
+        listen: false,
+      );
       themeService.updateThemeMode(themeMode);
-      
+
       ScaffoldMessenger.of(_currentContext!).showSnackBar(
         SnackBar(
           content: Text('Theme changed to ${themeMode.toUpperCase()} mode'),
@@ -1357,10 +1403,11 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
       );
     }
   }
-void _injectJavaScript(WebViewController controller) {
-  debugPrint('💉 Injecting JavaScript...');
-  
-  controller.runJavaScript('''
+
+  void _injectJavaScript(WebViewController controller) {
+    debugPrint('💉 Injecting JavaScript...');
+
+    controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading...");
     
     // Enhanced click handler with full protocol support
@@ -1989,7 +2036,8 @@ void _injectJavaScript(WebViewController controller) {
     console.log("🎉 ERPForever WebView fully initialized with complete feature set!");
     console.log("🔧 Debug info:", window.ERPForever.getDebugInfo());
   ''');
-}
+  }
+
   // Update context
   void updateContext(BuildContext context) {
     _currentContext = context;

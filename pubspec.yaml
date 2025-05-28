@@ -26,9 +26,7 @@ dependencies:
   cached_network_image: ^3.3.0
   geolocator: ^12.0.0
   permission_handler: ^11.3.1
-  # Replace contacts_service with flutter_contacts
   flutter_contacts: ^1.1.9
-  # Replace image_gallery_saver with gal (more modern and maintained)
   gal: ^2.3.0
   share_plus: ^7.2.1
   path_provider: ^2.1.1

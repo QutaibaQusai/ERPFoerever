@@ -617,17 +617,18 @@ class _WebViewSheetState extends State<WebViewSheet> {
         let canPull = false;
         let touchStartTime = 0;
         
-        // Create refresh indicator element - without arrow
+        // Create refresh indicator element
         const refreshIndicator = document.createElement('div');
         refreshIndicator.id = 'native-refresh-indicator-sheet';
         refreshIndicator.className = 'keep-fixed'; // Prevent position changes
         refreshIndicator.innerHTML = \`
           <div class="refresh-content">
+            <div class="refresh-icon">↓</div>
             <div class="refresh-text">Pull to refresh</div>
           </div>
         \`;
         
-        // CSS styles - without icon styles
+        // CSS styles matching WebViewPage design
         const style = document.createElement('style');
         style.textContent = \`
           #native-refresh-indicator-sheet {
@@ -653,23 +654,33 @@ class _WebViewSheetState extends State<WebViewSheet> {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           }
           
+          .refresh-icon {
+            font-size: 24px;
+            margin-bottom: 4px;
+            transition: transform 0.3s ease;
+          }
+          
           .refresh-text {
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 500;
             opacity: 0.9;
+          }
+          
+          #native-refresh-indicator-sheet.ready .refresh-icon {
+            transform: rotate(180deg);
           }
           
           #native-refresh-indicator-sheet.ready .refresh-text::after {
             content: ' - Release to refresh';
           }
           
-          #native-refresh-indicator-sheet.refreshing .refresh-text {
-            animation: pulse 1s ease-in-out infinite;
+          #native-refresh-indicator-sheet.refreshing .refresh-icon {
+            animation: spin 1s linear infinite;
           }
           
-          @keyframes pulse {
-            0%, 100% { opacity: 0.7; }
-            50% { opacity: 1; }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
           
           body {
@@ -714,7 +725,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
           return scrollTop <= 5; // Same as WebViewPage
         }
         
-        // Update refresh indicator - without icon manipulation
+        // Update refresh indicator - matching WebViewPage behavior
         function updateRefreshIndicator() {
           const progress = Math.min(pullDistance / PULL_THRESHOLD, 1);
           const translateY = Math.min(pullDistance * 0.6, MAX_PULL_DISTANCE * 0.6);
@@ -728,13 +739,17 @@ class _WebViewSheetState extends State<WebViewSheet> {
             refreshIndicator.classList.remove('ready');
             refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
           }
+          
+          const rotation = progress * 180;
+          refreshIndicator.querySelector('.refresh-icon').style.transform = \`rotate(\${rotation}deg)\`;
         }
         
-        // Refresh function - without icon manipulation
+        // Refresh function - matching WebViewPage style
         function startRefreshing() {
           isRefreshing = true;
           refreshIndicator.classList.add('refreshing');
           refreshIndicator.querySelector('.refresh-text').textContent = 'Refreshing...';
+          refreshIndicator.querySelector('.refresh-icon').textContent = '⟳';
           refreshIndicator.style.transform = 'translateY(80px)';
           
           console.log('🔄 Sending refresh message via channel:', refreshChannelName);
@@ -756,12 +771,14 @@ class _WebViewSheetState extends State<WebViewSheet> {
           }, 2000);
         }
         
-        // End refreshing animation - without icon reset
+        // End refreshing animation - matching WebViewPage
         function endRefreshing() {
           isRefreshing = false;
           refreshIndicator.classList.remove('refreshing', 'ready');
           refreshIndicator.style.transform = 'translateY(-120px)';
           refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
+          refreshIndicator.querySelector('.refresh-icon').textContent = '↓';
+          refreshIndicator.querySelector('.refresh-icon').style.transform = 'rotate(0deg)';
         }
         
         // Touch handlers - matching WebViewPage behavior

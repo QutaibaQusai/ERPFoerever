@@ -20,9 +20,10 @@ class _WebViewPageState extends State<WebViewPage> {
   late WebViewController _controller;
   bool _isLoading = true;
   bool _isAtTop = true;
-  bool _isRefreshing = false;
   final String _channelName =
       'RegularWebViewScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
+      final String _refreshChannelName =
+    'PullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
 
   @override
   void initState() {
@@ -54,6 +55,16 @@ class _WebViewPageState extends State<WebViewPage> {
         }
       },
     );
+    // Add JavaScript channel for pull-to-refresh
+_controller.addJavaScriptChannel(
+  _refreshChannelName,
+  onMessageReceived: (JavaScriptMessage message) {
+    if (message.message == 'refresh') {
+      debugPrint('🔄 Pull-to-refresh triggered from JavaScript');
+      _handleJavaScriptRefresh();
+    }
+  },
+);
 
     // IMPORTANT: Override the navigation delegate to handle new-web:// properly
     _controller.setNavigationDelegate(
@@ -81,6 +92,7 @@ class _WebViewPageState extends State<WebViewPage> {
           Future.delayed(const Duration(milliseconds: 500), () {
             _injectScrollMonitoring();
           });
+          _injectPullToRefresh();
         },
         onNavigationRequest: (NavigationRequest request) {
           debugPrint('🔍 WebViewPage Navigation request: ${request.url}');
@@ -97,7 +109,226 @@ class _WebViewPageState extends State<WebViewPage> {
       ),
     );
   }
-
+  // Inject native JavaScript pull-to-refresh functionality
+void _injectPullToRefresh() {
+  _controller.runJavaScript('''
+    (function() {
+      console.log('🔄 Initializing native pull-to-refresh...');
+      
+      // Configuration
+      const PULL_THRESHOLD = 80; // Distance needed to trigger refresh
+      const MAX_PULL_DISTANCE = 120; // Maximum pull distance
+      const channelName = '$_refreshChannelName';
+      
+      // State variables
+      let startY = 0;
+      let currentY = 0;
+      let pullDistance = 0;
+      let isPulling = false;
+      let isRefreshing = false;
+      let canPull = false;
+      
+      // Create refresh indicator element
+      const refreshIndicator = document.createElement('div');
+      refreshIndicator.id = 'native-refresh-indicator';
+      refreshIndicator.innerHTML = `
+        <div class="refresh-content">
+          <div class="refresh-icon">↓</div>
+          <div class="refresh-text">Pull to refresh</div>
+        </div>
+      `;
+      
+      // CSS styles for the refresh indicator
+      const style = document.createElement('style');
+      style.textContent = \`
+        #native-refresh-indicator {
+          position: fixed;
+          top: -120px;
+          left: 0;
+          right: 0;
+          height: 80px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          z-index: 9999;
+          transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .refresh-content {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          color: white;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .refresh-icon {
+          font-size: 24px;
+          margin-bottom: 4px;
+          transition: transform 0.3s ease;
+        }
+        
+        .refresh-text {
+          font-size: 14px;
+          font-weight: 500;
+          opacity: 0.9;
+        }
+        
+        #native-refresh-indicator.ready .refresh-icon {
+          transform: rotate(180deg);
+        }
+        
+        #native-refresh-indicator.ready .refresh-text::after {
+          content: ' - Release to refresh';
+        }
+        
+        #native-refresh-indicator.refreshing .refresh-icon {
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        body {
+          overscroll-behavior-y: contain;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+          #native-refresh-indicator {
+            background: linear-gradient(135deg, #434343 0%, #000000 100%);
+          }
+        }
+      \`;
+      
+      document.head.appendChild(style);
+      document.body.appendChild(refreshIndicator);
+      
+      // Check if user is at the top of the page
+      function isAtPageTop() {
+        const scrollTop = Math.max(
+          window.pageYOffset || 0,
+          document.documentElement.scrollTop || 0,
+          document.body.scrollTop || 0
+        );
+        return scrollTop <= 5;
+      }
+      
+      // Update refresh indicator based on pull distance
+      function updateRefreshIndicator() {
+        const progress = Math.min(pullDistance / PULL_THRESHOLD, 1);
+        const translateY = Math.min(pullDistance * 0.6, MAX_PULL_DISTANCE * 0.6);
+        
+        refreshIndicator.style.transform = \`translateY(\${translateY}px)\`;
+        
+        if (pullDistance >= PULL_THRESHOLD) {
+          refreshIndicator.classList.add('ready');
+          refreshIndicator.querySelector('.refresh-text').textContent = 'Release to refresh';
+        } else {
+          refreshIndicator.classList.remove('ready');
+          refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
+        }
+        
+        const rotation = progress * 180;
+        refreshIndicator.querySelector('.refresh-icon').style.transform = \`rotate(\${rotation}deg)\`;
+      }
+      
+      // Start refreshing animation
+      function startRefreshing() {
+        isRefreshing = true;
+        refreshIndicator.classList.add('refreshing');
+        refreshIndicator.querySelector('.refresh-text').textContent = 'Refreshing...';
+        refreshIndicator.querySelector('.refresh-icon').textContent = '⟳';
+        refreshIndicator.style.transform = 'translateY(80px)';
+        
+        if (window[channelName] && window[channelName].postMessage) {
+          window[channelName].postMessage('refresh');
+        }
+        
+        setTimeout(() => {
+          endRefreshing();
+        }, 2000);
+      }
+      
+      // End refreshing animation
+      function endRefreshing() {
+        isRefreshing = false;
+        refreshIndicator.classList.remove('refreshing', 'ready');
+        refreshIndicator.style.transform = 'translateY(-120px)';
+        refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
+        refreshIndicator.querySelector('.refresh-icon').textContent = '↓';
+        refreshIndicator.querySelector('.refresh-icon').style.transform = 'rotate(0deg)';
+      }
+      
+      // Touch event handlers
+      function handleTouchStart(e) {
+        if (isRefreshing) return;
+        canPull = isAtPageTop();
+        if (!canPull) return;
+        startY = e.touches[0].clientY;
+        isPulling = false;
+        pullDistance = 0;
+      }
+      
+      function handleTouchMove(e) {
+        if (isRefreshing || !canPull) return;
+        currentY = e.touches[0].clientY;
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 0 && isAtPageTop()) {
+          e.preventDefault();
+          isPulling = true;
+          pullDistance = Math.min(deltaY * 0.5, MAX_PULL_DISTANCE);
+          updateRefreshIndicator();
+        }
+      }
+      
+      function handleTouchEnd(e) {
+        if (isRefreshing || !isPulling) return;
+        
+        if (pullDistance >= PULL_THRESHOLD) {
+          startRefreshing();
+        } else {
+          refreshIndicator.style.transform = 'translateY(-120px)';
+          refreshIndicator.classList.remove('ready');
+        }
+        
+        isPulling = false;
+        pullDistance = 0;
+        canPull = false;
+      }
+      
+      // Add event listeners
+      document.addEventListener('touchstart', handleTouchStart, { passive: false });
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
+      document.addEventListener('touchend', handleTouchEnd, { passive: false });
+      
+      console.log('✅ Native pull-to-refresh initialized successfully');
+      
+      // Expose refresh function globally
+      window.ERPForever.triggerRefresh = function() {
+        if (!isRefreshing) {
+          startRefreshing();
+        }
+      };
+      
+    })();
+  ''');
+}
+// Handle refresh triggered from JavaScript
+Future<void> _handleJavaScriptRefresh() async {
+  debugPrint('🔄 Handling JavaScript refresh request');
+  
+  try {
+    await _controller.reload();
+    debugPrint('✅ JavaScript refresh completed successfully');
+  } catch (e) {
+    debugPrint('❌ Error during JavaScript refresh: $e');
+  }
+}
   // CRITICAL: Re-inject all WebViewService JavaScript functionality
   void _reinjectWebViewServiceJS() {
     debugPrint('💉 Re-injecting WebViewService JavaScript...');
@@ -607,32 +838,7 @@ class _WebViewPageState extends State<WebViewPage> {
     ''');
   }
 
-  Future<void> _refreshWebView() async {
-    if (_isRefreshing) return;
-
-    debugPrint('🔄 Refreshing Regular WebView');
-
-    setState(() {
-      _isRefreshing = true;
-    });
-
-    try {
-      await _controller.reload();
-
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      debugPrint('✅ Regular WebView refreshed successfully');
-    } catch (e) {
-      debugPrint('❌ Error refreshing Regular WebView: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRefreshing = false;
-        });
-      }
-    }
-  }
-
+ 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -655,38 +861,25 @@ class _WebViewPageState extends State<WebViewPage> {
         backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
       ),
-      body: _buildRefreshableWebViewContent(isDarkMode),
-    );
+body: _buildWebViewContent(isDarkMode),    );
   }
 
-  Widget _buildRefreshableWebViewContent(bool isDarkMode) {
-    return RefreshIndicator(
-      backgroundColor: isDarkMode ? Colors.black : Colors.white,
-      color: isDarkMode ? Colors.white : Colors.black,
-      onRefresh: _refreshWebView,
-      child: SingleChildScrollView(
-        physics:
-            _isAtTop
-                ? const AlwaysScrollableScrollPhysics()
-                : const NeverScrollableScrollPhysics(),
-        child: SizedBox(
-          height:
-              MediaQuery.of(context).size.height -
-              kToolbarHeight -
-              MediaQuery.of(context).padding.top,
-          child: Stack(
-            children: [
-              WebViewWidget(controller: _controller),
-              if (_isLoading || _isRefreshing)
-                LoadingWidget(
-                  message: _isRefreshing ? "Refreshing..." : "Loading...",
-                ),
-            ],
+ Widget _buildWebViewContent(bool isDarkMode) {
+  return SizedBox(
+    height: MediaQuery.of(context).size.height -
+        kToolbarHeight -
+        MediaQuery.of(context).padding.top,
+    child: Stack(
+      children: [
+        WebViewWidget(controller: _controller),
+        if (_isLoading)
+          LoadingWidget(
+            message: "Loading...",
           ),
-        ),
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
 
   @override
   void dispose() {

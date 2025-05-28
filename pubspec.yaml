@@ -36,7 +36,6 @@ dependencies:
   http: ^1.4.0
   open_file: ^3.5.10
   flutter_inappwebview: ^6.0.0
-  pull_to_refresh: ^2.0.0
 
 
 dev_dependencies:

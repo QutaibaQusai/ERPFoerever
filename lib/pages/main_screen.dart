@@ -142,10 +142,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         onRefresh: () => _refreshWebView(index),
         // Custom condition: only allow refresh when webview is at top
         child: SingleChildScrollView(
-          physics:
-              _isAtTopStates[index] == true
-                  ? const AlwaysScrollableScrollPhysics()
-                  : const NeverScrollableScrollPhysics(),
+        physics:  const NeverScrollableScrollPhysics(),
           child: SizedBox(
             height:
                 MediaQuery.of(context).size.height -

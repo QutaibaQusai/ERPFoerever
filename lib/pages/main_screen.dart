@@ -264,7 +264,7 @@ Widget _buildWebView(int index, String url) {
         }
       },
       onNavigationRequest: (NavigationRequest request) {
-        return _handleNavigationRequest(request);
+        return  _handleNavigationRequest(request);
       },
     ),
   );
@@ -360,7 +360,7 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
           }
           
           #native-refresh-indicator-main-\${tabIndex}.ready .refresh-text::after {
-            content: ' - Release to refresh';
+            content: 'refresh';
           }
           
           #native-refresh-indicator-main-\${tabIndex}.refreshing .refresh-icon {
@@ -405,7 +405,7 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
           
           if (pullDistance >= PULL_THRESHOLD) {
             refreshIndicator.classList.add('ready');
-            refreshIndicator.querySelector('.refresh-text').textContent = 'Release to refresh';
+            refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to ';
           } else {
             refreshIndicator.classList.remove('ready');
             refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
@@ -637,75 +637,156 @@ Future<void> _handleJavaScriptRefresh(int index) async {
       _channelAdded[index] = false;
     }
   }
+NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+  debugPrint("Navigation request: ${request.url}");
 
-  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-    debugPrint("Navigation request: ${request.url}");
+  // NEW: Handle external URLs with ?external=1 parameter
+  if (request.url.contains('?external=1')) {
+    _handleExternalNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
 
-    // Theme requests
-    if (request.url.startsWith('dark-mode://') ||
-        request.url.startsWith('light-mode://') ||
-        request.url.startsWith('system-mode://')) {
-      _handleThemeChangeRequest(request.url);
-      return NavigationDecision.prevent;
-    }
+  // Theme requests
+  if (request.url.startsWith('dark-mode://') ||
+      request.url.startsWith('light-mode://') ||
+      request.url.startsWith('system-mode://')) {
+    _handleThemeChangeRequest(request.url);
+    return NavigationDecision.prevent;
+  }
 
-    // Auth requests
-    if (request.url.startsWith('logout://')) {
-      _handleLogoutRequest();
-      return NavigationDecision.prevent;
-    }
+  // Auth requests
+  if (request.url.startsWith('logout://')) {
+    _handleLogoutRequest();
+    return NavigationDecision.prevent;
+  }
 
-    // Location requests
-    if (request.url.startsWith('get-location://')) {
-      _handleLocationRequest();
-      return NavigationDecision.prevent;
-    }
+  // Location requests
+  if (request.url.startsWith('get-location://')) {
+    _handleLocationRequest();
+    return NavigationDecision.prevent;
+  }
 
-    // Contacts requests - ADD THIS
-    if (request.url.startsWith('get-contacts://')) {
-      _handleContactsRequest();
-      return NavigationDecision.prevent;
-    }
+  // Contacts requests
+  if (request.url.startsWith('get-contacts://')) {
+    _handleContactsRequest();
+    return NavigationDecision.prevent;
+  }
 
-    // Other navigation requests - FIXED URL
-    if (request.url.startsWith('new-web://')) {
-      _handleNewWebNavigation(request.url);
-      return NavigationDecision.prevent;
-    }
+  // Other navigation requests
+  if (request.url.startsWith('new-web://')) {
+    _handleNewWebNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
 
-    if (request.url.startsWith('new-sheet://')) {
-      _handleSheetNavigation(request.url);
-      return NavigationDecision.prevent;
-    }
+  if (request.url.startsWith('new-sheet://')) {
+    _handleSheetNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
 
-    // Barcode requests
-    if (request.url.contains('barcode') || request.url.contains('scan')) {
-      _handleBarcodeScanning(request.url);
-      return NavigationDecision.prevent;
-    }
-     if (request.url.startsWith('take-screenshot://')) {
+  // Barcode requests
+  if (request.url.contains('barcode') || request.url.contains('scan')) {
+    _handleBarcodeScanning(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  if (request.url.startsWith('take-screenshot://')) {
     _handleScreenshotRequest();
     return NavigationDecision.prevent;
   }
+
   // Image save requests
-if (request.url.startsWith('save-image://')) {
-  _handleImageSaveRequest(request.url);
-  return NavigationDecision.prevent;
-}
-if (request.url.startsWith('save-pdf://')) {
-  _handlePdfSaveRequest(request.url);
-  return NavigationDecision.prevent;
-}
+  if (request.url.startsWith('save-image://')) {
+    _handleImageSaveRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  if (request.url.startsWith('save-pdf://')) {
+    _handlePdfSaveRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+
   if (request.url.startsWith('alert://') || 
       request.url.startsWith('confirm://') || 
       request.url.startsWith('prompt://')) {
     _handleAlertRequest(request.url);
     return NavigationDecision.prevent;
   }
-  
 
-    return NavigationDecision.navigate;
+  return NavigationDecision.navigate;
+}
+void _handleExternalNavigation(String url) {
+  debugPrint('🌐 External navigation detected: $url');
+  
+  try {
+    // Remove the ?external=1 parameter to get the clean URL
+    String cleanUrl = url.replaceAll('?external=1', '');
+    
+    // Also handle case where there are other parameters after external=1
+    cleanUrl = cleanUrl.replaceAll('&external=1', '');
+    cleanUrl = cleanUrl.replaceAll('external=1&', '');
+    cleanUrl = cleanUrl.replaceAll('external=1', '');
+    
+    // Clean up any leftover ? or & at the end
+    if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
+      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+    }
+    
+    debugPrint('🔗 Clean URL for external navigation: $cleanUrl');
+    
+    // Validate URL
+    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
+      debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
+      _showUrlError('Invalid URL format');
+      return;
+    }
+    
+    // Determine the link type based on your preference
+    // You can change this to 'regular_webview' if you prefer
+    String linkType = 'regular_webview'; // or 'regular_webview'
+    
+    // Extract domain for title
+    String title = 'Web View';
+    try {
+      Uri uri = Uri.parse(cleanUrl);
+      title = uri.host.isNotEmpty ? uri.host : 'Web View';
+      // Remove www. prefix for cleaner title
+      if (title.startsWith('www.')) {
+        title = title.substring(4);
+      }
+    } catch (e) {
+      debugPrint('Error parsing URL for title: $e');
+    }
+    
+    // Navigate using WebViewService
+    WebViewService().navigate(
+      context,
+      url: cleanUrl,
+      linkType: linkType,
+      title: title,
+    );
+    
+    debugPrint('✅ Successfully opened external URL: $cleanUrl');
+    
+  } catch (e) {
+    debugPrint('❌ Error handling external navigation: $e');
+    _showUrlError('Failed to open external URL');
   }
+}
+
+// NEW: Add this helper method to show URL errors
+void _showUrlError(String message) {
+  if (mounted) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
   void _handleAlertRequest(String url) async {
   debugPrint('🚨 Alert request received in main screen: $url');
   

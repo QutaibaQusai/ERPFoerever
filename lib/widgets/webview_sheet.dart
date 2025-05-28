@@ -777,7 +777,6 @@ class _WebViewSheetState extends State<WebViewSheet> {
           refreshIndicator.classList.remove('refreshing', 'ready');
           refreshIndicator.style.transform = 'translateY(-120px)';
           refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
-          refreshIndicator.querySelector('.refresh-icon').textContent = '↓';
           refreshIndicator.querySelector('.refresh-icon').style.transform = 'rotate(0deg)';
         }
         

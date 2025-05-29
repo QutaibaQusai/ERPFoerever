@@ -1,5 +1,6 @@
 // lib/widgets/webview_sheet.dart - Complete Improved Native JS Pull-to-Refresh with Perfect Scrolling
 import 'dart:async';
+import 'package:ERPForever/pages/webview_page.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/gestures.dart';
@@ -111,16 +112,59 @@ void _initializeWebView() {
           }
         });
       },
-      onNavigationRequest: (NavigationRequest request) {
-        debugPrint('🔍 Sheet Navigation request: ${request.url}');
-        
-        // Update controller reference before handling navigation
-        if (mounted) {
-          WebViewService().updateController(_controller, context);
-        }
-        
-        return NavigationDecision.navigate;
-      },
+ onNavigationRequest: (NavigationRequest request) {
+  debugPrint('🔍 Sheet Navigation request: ${request.url}');
+  
+  // Update controller reference before handling navigation
+  if (mounted) {
+    WebViewService().updateController(_controller, context);
+  }
+  
+  // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
+  if (request.url.contains('?external=1')) {
+    _handleExternalNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
+  
+  // Handle new-web:// requests
+  if (request.url.startsWith('new-web://')) {
+    _handleNewWebNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  // Handle new-sheet:// requests
+  if (request.url.startsWith('new-sheet://')) {
+    _handleSheetNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  // For loggedin:// requests, prevent to avoid issues
+  if (request.url.startsWith('loggedin://')) {
+    debugPrint('🔐 Login success detected in WebViewSheet - but user is already logged in');
+    return NavigationDecision.prevent;
+  }
+
+  // For all service-related URLs, prevent navigation (they'll be handled by JavaScript)
+  if (request.url.startsWith('dark-mode://') ||
+      request.url.startsWith('light-mode://') ||
+      request.url.startsWith('system-mode://') ||
+      request.url.startsWith('logout://') ||
+      request.url.startsWith('get-location://') ||
+      request.url.startsWith('get-contacts://') ||
+      request.url.startsWith('take-screenshot://') ||
+      request.url.startsWith('save-image://') ||
+      request.url.startsWith('save-pdf://') ||
+      request.url.startsWith('alert://') ||
+      request.url.startsWith('confirm://') ||
+      request.url.startsWith('prompt://') ||
+      request.url.contains('barcode') ||
+      request.url.contains('scan')) {
+    // These will be handled by the re-injected JavaScript
+    return NavigationDecision.prevent;
+  }
+  
+  return NavigationDecision.navigate;
+},
       onWebResourceError: (WebResourceError error) {
         debugPrint('❌ Sheet web resource error: ${error.description}');
         if (mounted) {
@@ -136,6 +180,125 @@ void _initializeWebView() {
   _startLoadingMonitor();
 }
 
+
+
+void _handleExternalNavigation(String url) {
+  debugPrint('🌐 External navigation detected in WebViewSheet: $url');
+  
+  try {
+    // Remove the ?external=1 parameter to get the clean URL
+    String cleanUrl = url.replaceAll('?external=1', '');
+    
+    // Also handle case where there are other parameters after external=1
+    cleanUrl = cleanUrl.replaceAll('&external=1', '');
+    cleanUrl = cleanUrl.replaceAll('external=1&', '');
+    cleanUrl = cleanUrl.replaceAll('external=1', '');
+    
+    // Clean up any leftover ? or & at the end
+    if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
+      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+    }
+    
+    debugPrint('🔗 Clean URL for external navigation: $cleanUrl');
+    
+    // Validate URL
+    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
+      debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
+      _showUrlError('Invalid URL format');
+      return;
+    }
+    
+    // Extract domain for title
+    String title = 'Web View';
+    try {
+      Uri uri = Uri.parse(cleanUrl);
+      title = uri.host.isNotEmpty ? uri.host : 'Web View';
+      // Remove www. prefix for cleaner title
+      if (title.startsWith('www.')) {
+        title = title.substring(4);
+      }
+    } catch (e) {
+      debugPrint('Error parsing URL for title: $e');
+    }
+    
+    // Navigate using WebViewService (creates another layer)
+    WebViewService().navigate(
+      context,
+      url: cleanUrl,
+      linkType: 'regular_webview', // You can change this to 'sheet_webview' if preferred
+      title: title,
+    );
+    
+    debugPrint('✅ Successfully opened external URL from sheet: $cleanUrl');
+    
+  } catch (e) {
+    debugPrint('❌ Error handling external navigation in sheet: $e');
+    _showUrlError('Failed to open external URL');
+  }
+}
+void _handleNewWebNavigation(String url) {
+  debugPrint('🌐 Opening new WebView from sheet: $url');
+
+  String targetUrl = 'https://mobile.erpforever.com/';
+
+  if (url.contains('?')) {
+    try {
+      Uri uri = Uri.parse(url.replaceFirst('new-web://', 'https://'));
+      if (uri.queryParameters.containsKey('url')) {
+        targetUrl = uri.queryParameters['url']!;
+      }
+    } catch (e) {
+      debugPrint("Error parsing URL parameters: $e");
+    }
+  }
+
+  // Navigate to another WebViewPage
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
+    ),
+  );
+}
+
+void _handleSheetNavigation(String url) {
+  debugPrint('📋 Opening new sheet from current sheet: $url');
+
+  String targetUrl = widget.url; // Use current URL as default
+
+  if (url.contains('?url=')) {
+    try {
+      Uri uri = Uri.parse(url.replaceFirst('new-sheet://', 'https://'));
+      if (uri.queryParameters.containsKey('url')) {
+        targetUrl = uri.queryParameters['url']!;
+      }
+    } catch (e) {
+      debugPrint('❌ Error parsing URL parameters: $e');
+    }
+  }
+
+  // Open another sheet
+  WebViewService().navigate(
+    context,
+    url: targetUrl,
+    linkType: 'sheet_webview',
+    title: widget.title,
+  );
+}
+
+void _showUrlError(String message) {
+  if (mounted) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
   // Handle refresh triggered from JavaScript
   Future<void> _handleJavaScriptRefresh() async {
     debugPrint('🔄 Handling JavaScript refresh request in sheet');
@@ -271,343 +434,375 @@ void _initializeWebView() {
     ''');
   }
 
-  // Re-inject all WebViewService JavaScript functionality
-  void _reinjectWebViewServiceJS() {
-    debugPrint('💉 Re-injecting WebViewService JavaScript in sheet...');
+void _reinjectWebViewServiceJS() {
+  debugPrint('💉 Re-injecting WebViewService JavaScript...');
 
-    _controller.runJavaScript('''
-      console.log("🚀 ERPForever WebView JavaScript loading in sheet...");
+  _controller.runJavaScript('''
+    console.log("🚀 ERPForever WebView JavaScript loading...");
+    
+    // Enhanced click handler with full protocol support - FIXED VERSION
+    document.addEventListener('click', function(e) {
+      let element = e.target;
       
-      // Enhanced click handler with full protocol support
-      if (!window.sheetClickHandlerAdded) {
-        document.addEventListener('click', function(e) {
-          let element = e.target;
+      for (let i = 0; i < 4 && element; i++) {
+        const href = element.getAttribute('href');
+        const textContent = element.textContent?.toLowerCase() || '';
+        
+        // Handle all URL protocols FIRST - if we find href, process it and skip text checks
+        if (href) {
+          console.log('🔍 WebViewPage: Click detected on href:', href);
           
-          for (let i = 0; i < 4 && element; i++) {
-            const href = element.getAttribute('href');
-            const textContent = element.textContent?.toLowerCase() || '';
-            
-            // Handle all URL protocols FIRST
-            if (href) {
-              console.log('🔍 WebViewSheet: Click detected on href:', href);
-              
-              // PRIORITY: Handle new-web:// - Let NavigationDelegate handle this
-              if (href.startsWith('new-web://')) {
-                console.log('🌐 WebViewSheet: new-web:// link clicked');
-                return;
-              }
-              // PRIORITY: Handle new-sheet:// - Let NavigationDelegate handle this
-              else if (href.startsWith('new-sheet://')) {
-                console.log('📋 WebViewSheet: new-sheet:// link clicked');
-                return;
-              }
-              // Alert requests
-              else if (href.startsWith('alert://')) {
-                e.preventDefault();
-                if (window.AlertManager) {
-                  window.AlertManager.postMessage(href);
-                  console.log("🚨 Alert triggered via URL:", href);
-                } else {
-                  console.error("❌ AlertManager not available");
-                }
-                return false;
-              } else if (href.startsWith('confirm://')) {
-                e.preventDefault();
-                if (window.AlertManager) {
-                  window.AlertManager.postMessage(href);
-                  console.log("❓ Confirm triggered via URL:", href);
-                } else {
-                  console.error("❌ AlertManager not available");
-                }
-                return false;
-              } else if (href.startsWith('prompt://')) {
-                e.preventDefault();
-                if (window.AlertManager) {
-                  window.AlertManager.postMessage(href);
-                  console.log("✏️ Prompt triggered via URL:", href);
-                } else {
-                  console.error("❌ AlertManager not available");
-                }
-                return false;
-              }
-              // Theme requests
-              else if (href.startsWith('dark-mode://')) {
-                e.preventDefault();
-                if (window.ThemeManager) window.ThemeManager.postMessage('dark');
-                return false;
-              } else if (href.startsWith('light-mode://')) {
-                e.preventDefault();
-                if (window.ThemeManager) window.ThemeManager.postMessage('light');
-                return false;
-              } else if (href.startsWith('system-mode://')) {
-                e.preventDefault();
-                if (window.ThemeManager) window.ThemeManager.postMessage('system');
-                return false;
-              } 
-              // Auth requests
-              else if (href.startsWith('logout://')) {
-                e.preventDefault();
-                if (window.AuthManager) {
-                  window.AuthManager.postMessage('logout');
-                  console.log("🚪 WebViewSheet: Logout triggered via URL");
-                } else {
-                  console.error("❌ AuthManager not available");
-                }
-                return false;
-              } 
-              // Service requests
-              else if (href.startsWith('get-location://')) {
-                e.preventDefault();
-                if (window.LocationManager) window.LocationManager.postMessage('getCurrentLocation');
-                return false;
-              } 
-              else if (href.startsWith('get-contacts://')) {
-                e.preventDefault();
-                if (window.ContactsManager) window.ContactsManager.postMessage('getAllContacts');
-                return false;
-              } 
-              else if (href.startsWith('take-screenshot://')) {
-                e.preventDefault();
-                if (window.ScreenshotManager) window.ScreenshotManager.postMessage('takeScreenshot');
-                return false;
-              } 
-              else if (href.startsWith('save-image://')) {
-                e.preventDefault();
-                if (window.ImageSaver) window.ImageSaver.postMessage(href);
-                return false;
-              } 
-              else if (href.startsWith('save-pdf://')) {
-                e.preventDefault();
-                if (window.PdfSaver) {
-                  window.PdfSaver.postMessage(href);
-                  console.log("📄 PDF save triggered via URL:", href);
-                } else {
-                  console.error("❌ PdfSaver not available");
-                }
-                return false;
-              }
-              else if (href?.includes('barcode') || href?.includes('scan')) {
-                e.preventDefault();
-                if (window.BarcodeScanner) {
-                  window.BarcodeScanner.postMessage('scan');
-                  console.log("📱 Barcode scan triggered via href");
-                }
-                return false;
-              }
-              
-              element = element.parentElement;
-              continue;
-            }
-            
-            // Text-based detection for services (only if no href)
-            if (textContent.includes('logout') || textContent.includes('log out') || textContent.includes('sign out')) {
-              e.preventDefault();
-              if (window.AuthManager) {
-                window.AuthManager.postMessage('logout');
-                console.log("🚪 WebViewSheet: Logout triggered via text");
-              } else {
-                console.error("❌ AuthManager not available in WebViewSheet");
-              }
-              return false;
-            }
-            
-            if (textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) {
-              e.preventDefault();
-              if (window.LocationManager) {
-                window.LocationManager.postMessage('getCurrentLocation');
-                console.log("🌍 Location request triggered via text");
-              }
-              return false;
-            }
-            
-            if (textContent.includes('get contacts') || textContent.includes('load contacts') || textContent.includes('contact list')) {
-              e.preventDefault();
-              if (window.ContactsManager) {
-                window.ContactsManager.postMessage('getAllContacts');
-                console.log("📞 Contacts request triggered via text");
-              }
-              return false;
-            }
-            
-            if (textContent.includes('screenshot') || textContent.includes('capture screen') || textContent.includes('take screenshot')) {
-              e.preventDefault();
-              if (window.ScreenshotManager) {
-                window.ScreenshotManager.postMessage('takeScreenshot');
-                console.log("📸 Screenshot triggered via text");
-              }
-              return false;
-            }
-            
-            if (textContent.includes('scan barcode') || textContent.includes('qr code')) {
-              e.preventDefault();
-              if (window.BarcodeScanner) {
-                window.BarcodeScanner.postMessage('scan');
-                console.log("📱 Barcode scan triggered via text");
-              }
-              return false;
-            }
-            
-            element = element.parentElement;
+          // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
+          if (href.includes('?external=1')) {
+            console.log('🌐 WebViewPage: External URL detected, letting NavigationDelegate handle it');
+            return; // Let NavigationDelegate handle this
           }
-        }, true);
-        
-        window.sheetClickHandlerAdded = true;
-      }
-
-      // Enhanced utility object with complete feature set
-      window.ERPForever = window.ERPForever || {};
-      Object.assign(window.ERPForever, {
-        // Alert System
-        showAlert: function(message) {
-          console.log('🚨 Showing alert:', message);
-          if (window.AlertManager) {
-            if (typeof message === 'string' && message.trim()) {
-              window.AlertManager.postMessage('alert://' + encodeURIComponent(message));
+          
+          // PRIORITY: Handle new-web:// - Let NavigationDelegate handle this
+          if (href.startsWith('new-web://')) {
+            console.log('🌐 WebViewPage: new-web:// link clicked - letting NavigationDelegate handle it');
+            return; // Exit the entire click handler
+          }
+          // PRIORITY: Handle new-sheet:// - Let NavigationDelegate handle this
+          else if (href.startsWith('new-sheet://')) {
+            console.log('📋 WebViewPage: new-sheet:// link clicked - letting NavigationDelegate handle it');
+            return; // Exit the entire click handler
+          }
+          // Alert requests
+          else if (href.startsWith('alert://')) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage(href);
+              console.log("🚨 Alert triggered via URL:", href);
             } else {
-              console.error('❌ Invalid alert message');
+              console.error("❌ AlertManager not available");
             }
-          } else {
-            console.error('❌ AlertManager not available');
-          }
-        },
-        
-        showConfirm: function(message) {
-          console.log('❓ Showing confirm:', message);
-          if (window.AlertManager) {
-            if (typeof message === 'string' && message.trim()) {
-              window.AlertManager.postMessage('confirm://' + encodeURIComponent(message));
+            return false;
+          } else if (href.startsWith('confirm://')) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage(href);
+              console.log("❓ Confirm triggered via URL:", href);
             } else {
-              console.error('❌ Invalid confirm message');
+              console.error("❌ AlertManager not available");
             }
-          } else {
-            console.error('❌ AlertManager not available');
-          }
-        },
-        
-        showPrompt: function(message, defaultValue = '') {
-          console.log('✏️ Showing prompt:', message, 'default:', defaultValue);
-          if (window.AlertManager) {
-            if (typeof message === 'string' && message.trim()) {
-              let promptUrl = 'prompt://message=' + encodeURIComponent(message);
-              if (defaultValue) {
-                promptUrl += '&default=' + encodeURIComponent(defaultValue);
-              }
-              window.AlertManager.postMessage(promptUrl);
+            return false;
+          } else if (href.startsWith('prompt://')) {
+            e.preventDefault();
+            if (window.AlertManager) {
+              window.AlertManager.postMessage(href);
+              console.log("✏️ Prompt triggered via URL:", href);
             } else {
-              console.error('❌ Invalid prompt message');
+              console.error("❌ AlertManager not available");
             }
-          } else {
-            console.error('❌ AlertManager not available');
-          }
-        },
-        
-        // Service methods
-        getAllContacts: function() {
-          console.log('📞 Getting all contacts...');
-          if (window.ContactsManager) {
-            window.ContactsManager.postMessage('getAllContacts');
-          } else {
-            console.error('❌ ContactsManager not available');
-          }
-        },
-        
-        takeScreenshot: function() {
-          console.log('📸 Taking screenshot...');
-          if (window.ScreenshotManager) {
-            window.ScreenshotManager.postMessage('takeScreenshot');
-          } else {
-            console.error('❌ ScreenshotManager not available');
-          }
-        },
-        
-        saveImage: function(imageUrl) {
-          console.log('🖼️ Saving image:', imageUrl);
-          if (window.ImageSaver) {
-            if (!imageUrl.startsWith('save-image://')) {
-              imageUrl = 'save-image://' + imageUrl;
-            }
-            window.ImageSaver.postMessage(imageUrl);
-          } else {
-            console.error('❌ ImageSaver not available');
-          }
-        },
-        
-        savePdf: function(pdfUrl) {
-          console.log('📄 Saving PDF:', pdfUrl);
-          if (window.PdfSaver) {
-            if (!pdfUrl || typeof pdfUrl !== 'string') {
-              console.error('❌ Invalid PDF URL provided');
-              return false;
-            }
-            
-            if (!pdfUrl.startsWith('save-pdf://')) {
-              pdfUrl = 'save-pdf://' + pdfUrl;
-            }
-            
-            window.PdfSaver.postMessage(pdfUrl);
-            return true;
-          } else {
-            console.error('❌ PdfSaver not available');
             return false;
           }
-        },
-        
-        getCurrentLocation: function() {
-          console.log('🌍 Getting current location...');
-          if (window.LocationManager) {
-            window.LocationManager.postMessage('getCurrentLocation');
-          } else {
-            console.error('❌ LocationManager not available');
-          }
-        },
-        
-        scanBarcode: function() {
-          console.log('📸 Scanning barcode...');
-          if (window.BarcodeScanner) {
-            window.BarcodeScanner.postMessage('scan');
-          } else {
-            console.error('❌ BarcodeScanner not available');
-          }
-        },
-        
-        scanBarcodeContinuous: function() {
-          console.log('📸 Scanning barcode (continuous)...');
-          if (window.BarcodeScanner) {
-            window.BarcodeScanner.postMessage('scanContinuous');
-          } else {
-            console.error('❌ BarcodeScanner not available');
-          }
-        },
-        
-        setTheme: function(theme) {
-          console.log('🎨 Setting theme to:', theme);
-          if (window.ThemeManager) {
-            if (['dark', 'light', 'system'].includes(theme)) {
-              window.ThemeManager.postMessage(theme);
+          // Theme requests
+          else if (href.startsWith('dark-mode://')) {
+            e.preventDefault();
+            if (window.ThemeManager) window.ThemeManager.postMessage('dark');
+            return false;
+          } else if (href.startsWith('light-mode://')) {
+            e.preventDefault();
+            if (window.ThemeManager) window.ThemeManager.postMessage('light');
+            return false;
+          } else if (href.startsWith('system-mode://')) {
+            e.preventDefault();
+            if (window.ThemeManager) window.ThemeManager.postMessage('system');
+            return false;
+          } 
+          // Auth requests - ONLY handle via JavaScript - MAKE MORE SPECIFIC
+          else if (href.startsWith('logout://')) {
+            e.preventDefault();
+            if (window.AuthManager) {
+              window.AuthManager.postMessage('logout');
+              console.log("🚪 WebViewPage: Logout triggered via URL (handled by JS)");
             } else {
-              console.error('❌ Invalid theme. Use: dark, light, or system');
+              console.error("❌ AuthManager not available");
             }
-          } else {
-            console.error('❌ ThemeManager not available');
+            return false;
+          } 
+          // Location requests
+          else if (href.startsWith('get-location://')) {
+            e.preventDefault();
+            if (window.LocationManager) window.LocationManager.postMessage('getCurrentLocation');
+            return false;
+          } 
+          // Contacts requests
+          else if (href.startsWith('get-contacts://')) {
+            e.preventDefault();
+            if (window.ContactsManager) window.ContactsManager.postMessage('getAllContacts');
+            return false;
+          } 
+          // Screenshot requests
+          else if (href.startsWith('take-screenshot://')) {
+            e.preventDefault();
+            if (window.ScreenshotManager) window.ScreenshotManager.postMessage('takeScreenshot');
+            return false;
+          } 
+          // Image save requests
+          else if (href.startsWith('save-image://')) {
+            e.preventDefault();
+            if (window.ImageSaver) window.ImageSaver.postMessage(href);
+            return false;
+          } 
+          // PDF save requests
+          else if (href.startsWith('save-pdf://')) {
+            e.preventDefault();
+            if (window.PdfSaver) {
+              window.PdfSaver.postMessage(href);
+              console.log("📄 PDF save triggered via URL:", href);
+            } else {
+              console.error("❌ PdfSaver not available");
+            }
+            return false;
           }
-        },
+          // Barcode detection
+          else if (href?.includes('barcode') || href?.includes('scan')) {
+            e.preventDefault();
+            if (window.BarcodeScanner) {
+              window.BarcodeScanner.postMessage('scan');
+              console.log("📱 Barcode scan triggered via href");
+            }
+            return false;
+          }
+          
+          // If we found an href but it's not a special protocol, continue to next element
+          // DON'T do text-based detection on elements that have href attributes
+          element = element.parentElement;
+          continue; // Skip text-based detection for this element
+        }
         
-        logout: function() {
-          console.log('🚪 Logging out...');
+        // ONLY do text-based detection if NO href was found
+        // Text-based detection for services (only if no href) - MAKE MORE SPECIFIC
+        
+        // REMOVED AUTOMATIC LOGOUT DETECTION - Only trigger logout on specific elements
+        // Check if element has specific logout classes or data attributes
+        if ((element.classList && (element.classList.contains('logout-btn') || element.classList.contains('sign-out-btn'))) ||
+            element.getAttribute('data-action') === 'logout' ||
+            element.getAttribute('data-logout') === 'true') {
+          e.preventDefault();
           if (window.AuthManager) {
             window.AuthManager.postMessage('logout');
+            console.log("🚪 WebViewPage: Logout triggered via specific logout element");
           } else {
-            console.error('❌ AuthManager not available');
+            console.error("❌ AuthManager not available in WebViewPage");
           }
-        },
+          return false;
+        }
         
-        version: '1.2.0'
-      });
+        if (textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) {
+          e.preventDefault();
+          if (window.LocationManager) {
+            window.LocationManager.postMessage('getCurrentLocation');
+            console.log("🌍 Location request triggered via text");
+          }
+          return false;
+        }
+        
+        if (textContent.includes('get contacts') || textContent.includes('load contacts') || textContent.includes('contact list')) {
+          e.preventDefault();
+          if (window.ContactsManager) {
+            window.ContactsManager.postMessage('getAllContacts');
+            console.log("📞 Contacts request triggered via text");
+          }
+          return false;
+        }
+        
+        if (textContent.includes('screenshot') || textContent.includes('capture screen') || textContent.includes('take screenshot')) {
+          e.preventDefault();
+          if (window.ScreenshotManager) {
+            window.ScreenshotManager.postMessage('takeScreenshot');
+            console.log("📸 Screenshot triggered via text");
+          }
+          return false;
+        }
+        
+        if (textContent.includes('scan barcode') || textContent.includes('qr code')) {
+          e.preventDefault();
+          if (window.BarcodeScanner) {
+            window.BarcodeScanner.postMessage('scan');
+            console.log("📱 Barcode scan triggered via text");
+          }
+          return false;
+        }
+        
+        element = element.parentElement;
+      }
+    }, true);
 
-      console.log("✅ ERPForever WebView JavaScript ready in sheet!");
-      console.log("🔧 All services reinjected in WebViewSheet");
-    ''');
-  }
+    // Enhanced utility object with complete feature set
+    window.ERPForever = {
+      // Alert System
+      showAlert: function(message) {
+        console.log('🚨 Showing alert:', message);
+        if (window.AlertManager) {
+          if (typeof message === 'string' && message.trim()) {
+            window.AlertManager.postMessage('alert://' + encodeURIComponent(message));
+          } else {
+            console.error('❌ Invalid alert message');
+          }
+        } else {
+          console.error('❌ AlertManager not available');
+        }
+      },
+      
+      showConfirm: function(message) {
+        console.log('❓ Showing confirm:', message);
+        if (window.AlertManager) {
+          if (typeof message === 'string' && message.trim()) {
+            window.AlertManager.postMessage('confirm://' + encodeURIComponent(message));
+          } else {
+            console.error('❌ Invalid confirm message');
+          }
+        } else {
+          console.error('❌ AlertManager not available');
+        }
+      },
+      
+      showPrompt: function(message, defaultValue = '') {
+        console.log('✏️ Showing prompt:', message, 'default:', defaultValue);
+        if (window.AlertManager) {
+          if (typeof message === 'string' && message.trim()) {
+            let promptUrl = 'prompt://message=' + encodeURIComponent(message);
+            if (defaultValue) {
+              promptUrl += '&default=' + encodeURIComponent(defaultValue);
+            }
+            window.AlertManager.postMessage(promptUrl);
+          } else {
+            console.error('❌ Invalid prompt message');
+          }
+        } else {
+          console.error('❌ AlertManager not available');
+        }
+      },
+      
+      // Contact System
+      getAllContacts: function() {
+        console.log('📞 Getting all contacts...');
+        if (window.ContactsManager) {
+          window.ContactsManager.postMessage('getAllContacts');
+        } else {
+          console.error('❌ ContactsManager not available');
+        }
+      },
+      
+      // Screenshot System
+      takeScreenshot: function() {
+        console.log('📸 Taking screenshot...');
+        if (window.ScreenshotManager) {
+          window.ScreenshotManager.postMessage('takeScreenshot');
+        } else {
+          console.error('❌ ScreenshotManager not available');
+        }
+      },
+      
+      // Image Save System
+      saveImage: function(imageUrl) {
+        console.log('🖼️ Saving image:', imageUrl);
+        if (window.ImageSaver) {
+          if (!imageUrl.startsWith('save-image://')) {
+            imageUrl = 'save-image://' + imageUrl;
+          }
+          window.ImageSaver.postMessage(imageUrl);
+        } else {
+          console.error('❌ ImageSaver not available');
+        }
+      },
+      
+      // PDF Save System
+      savePdf: function(pdfUrl) {
+        console.log('📄 Saving PDF:', pdfUrl);
+        if (window.PdfSaver) {
+          if (!pdfUrl || typeof pdfUrl !== 'string') {
+            console.error('❌ Invalid PDF URL provided');
+            return false;
+          }
+          
+          if (!pdfUrl.startsWith('save-pdf://')) {
+            pdfUrl = 'save-pdf://' + pdfUrl;
+          }
+          
+          window.PdfSaver.postMessage(pdfUrl);
+          return true;
+        } else {
+          console.error('❌ PdfSaver not available');
+          return false;
+        }
+      },
+      
+      // Location System
+      getCurrentLocation: function() {
+        console.log('🌍 Getting current location...');
+        if (window.LocationManager) {
+          window.LocationManager.postMessage('getCurrentLocation');
+        } else {
+          console.error('❌ LocationManager not available');
+        }
+      },
+      
+      // Barcode System
+      scanBarcode: function() {
+        console.log('📸 Scanning barcode...');
+        if (window.BarcodeScanner) {
+          window.BarcodeScanner.postMessage('scan');
+        } else {
+          console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      scanBarcodeContinuous: function() {
+        console.log('📸 Scanning barcode (continuous)...');
+        if (window.BarcodeScanner) {
+          window.BarcodeScanner.postMessage('scanContinuous');
+        } else {
+          console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      // Theme System
+      setTheme: function(theme) {
+        console.log('🎨 Setting theme to:', theme);
+        if (window.ThemeManager) {
+          if (['dark', 'light', 'system'].includes(theme)) {
+            window.ThemeManager.postMessage(theme);
+          } else {
+            console.error('❌ Invalid theme. Use: dark, light, or system');
+          }
+        } else {
+          console.error('❌ ThemeManager not available');
+        }
+      },
+      
+      // Auth System
+      logout: function() {
+        console.log('🚪 Logging out...');
+        if (window.AuthManager) {
+          window.AuthManager.postMessage('logout');
+        } else {
+          console.error('❌ AuthManager not available');
+        }
+      },
+      
+      // NEW: External URL function
+      openExternal: function(url) {
+        console.log('🌐 Opening external URL:', url);
+        if (url && typeof url === 'string') {
+          // Add external parameter and navigate
+          const separator = url.includes('?') ? '&' : '?';
+          window.location.href = url + separator + 'external=1';
+        } else {
+          console.error('❌ Invalid URL for external navigation');
+        }
+      },
+      
+      version: '1.1.0'
+    };
+
+    console.log("✅ ERPForever WebView JavaScript ready!");
+    console.log("🔧 All services reinjected in WebViewPage");
+  ''');
+}
 
   void _injectScrollAndRefreshMonitoring() {
     _controller.runJavaScript('''

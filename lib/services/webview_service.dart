@@ -1304,49 +1304,69 @@ void _handleLocationRequest(String message) async {
     }
   }
 
-  void _handleAuthRequest(String message) {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for auth request');
-      return;
-    }
-
-    if (message == 'logout') {
-      _performLogout();
-    }
+void _handleAuthRequest(String message) {
+  debugPrint('🚪 Auth request received: $message');
+  
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for auth request');
+    return;
   }
 
-  void _performLogout() async {
-    if (_currentContext == null) return;
-
-    try {
-      final authService = Provider.of<AuthService>(
-        _currentContext!,
-        listen: false,
-      );
-      await authService.logout();
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        const SnackBar(
-          content: Text('Logged out successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
-      Navigator.of(_currentContext!).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-        (route) => false,
-      );
-    } catch (e) {
-      debugPrint('❌ Error during logout: $e');
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        const SnackBar(
-          content: Text('Error during logout'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+  if (message == 'logout') {
+    debugPrint('🔄 Processing logout request...');
+    _performLogout();
+  } else {
+    debugPrint('⚠️ Unknown auth request: $message');
   }
+}
+
+
+void _performLogout() async {
+  debugPrint('🚪 Starting logout process...');
+  
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for logout');
+    return;
+  }
+
+  try {
+    final authService = Provider.of<AuthService>(
+      _currentContext!,
+      listen: false,
+    );
+    
+    debugPrint('🔄 Calling authService.logout()...');
+    await authService.logout();
+
+    debugPrint('✅ Logout successful, showing feedback...');
+    
+    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+      const SnackBar(
+        content: Text('Logged out successfully'),
+        backgroundColor: Colors.green,
+      ),
+    );
+
+    debugPrint('🔄 Navigating to login page...');
+    
+    Navigator.of(_currentContext!).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const LoginPage()),
+      (route) => false,
+    );
+    
+    debugPrint('✅ Navigation to login page completed');
+    
+  } catch (e) {
+    debugPrint('❌ Error during logout: $e');
+
+    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+      const SnackBar(
+        content: Text('Error during logout'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
 
   void _handleBarcodeRequest(String message) {
     if (_currentContext == null) return;

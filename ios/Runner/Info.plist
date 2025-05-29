@@ -45,20 +45,68 @@
 		<true/>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
-		<key>NSCameraUsageDescription</key>
-		<string>Camera permission is required for barcode scanning.</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
-		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>This app needs location access to provide location-based features in the ERP system.</string>
 
+		<!-- CAMERA PERMISSIONS -->
+		<key>NSCameraUsageDescription</key>
+		<string>ERPForever needs camera access to scan barcodes, QR codes, and capture business documents. This helps you quickly input data and manage inventory.</string>
+
+		<!-- LOCATION PERMISSIONS -->
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>ERPForever needs location access to provide location-based features such as tracking work locations, finding nearby offices, and location-based time tracking for business operations.</string>
 		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-		<string>This app needs location access to provide location-based features in the ERP system.</string>
+		<string>ERPForever needs location access to provide comprehensive location-based business services including background location tracking for work hours and automated location-based check-ins.</string>
+
+		<!-- CONTACTS PERMISSIONS -->
 		<key>NSContactsUsageDescription</key>
-		<string>This app needs access to contacts to provide contact selection features in the ERP system.</string>
-		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>This app needs access to photo library to save screenshots.</string>
+		<string>ERPForever needs access to your contacts to help you quickly select and manage business contacts, import customer information, and streamline communication workflows in your ERP system.</string>
+
+		<!-- PHOTO LIBRARY PERMISSIONS -->
 		<key>NSPhotoLibraryUsageDescription</key>
-		<string>This app needs access to photo library to save and share screenshots.</string>
+		<string>ERPForever needs access to your photo library to save and manage business documents, screenshots, reports, and images. This allows you to organize and share important business information.</string>
+		<key>NSPhotoLibraryAddUsageDescription</key>
+		<string>ERPForever needs permission to save screenshots, business documents, reports, and images to your photo library for easy access and sharing of important business information.</string>
+
+		<!-- MICROPHONE PERMISSION (Optional - for future features) -->
+		<key>NSMicrophoneUsageDescription</key>
+		<string>ERPForever may need microphone access for voice notes, audio recording of meetings, and voice-to-text features to enhance your business productivity.</string>
+
+		<!-- FACE ID / TOUCH ID PERMISSION (Optional - for security) -->
+		<key>NSFaceIDUsageDescription</key>
+		<string>ERPForever uses Face ID to provide secure and convenient access to your business data and sensitive ERP information.</string>
+
+		<!-- NETWORK ACCESS (iOS 14+) -->
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>ERPForever needs access to your local network to connect to local servers, printers, and other business devices on your network.</string>
+
+		<!-- TRACKING PERMISSION (iOS 14.5+) -->
+		<key>NSUserTrackingUsageDescription</key>
+		<string>ERPForever would like to track your activity across other companies' apps and websites to provide better analytics and improve your business experience.</string>
+
+		<!-- FILE ACCESS PERMISSIONS -->
+		<key>NSDocumentsFolderUsageDescription</key>
+		<string>ERPForever needs access to documents to import and export business files, reports, and data for your ERP operations.</string>
+
+		<!-- CALENDAR PERMISSIONS (if you use calendar features) -->
+		<key>NSCalendarsUsageDescription</key>
+		<string>ERPForever needs calendar access to schedule meetings, track appointments, and manage business events within your ERP workflow.</string>
+		<key>NSRemindersUsageDescription</key>
+		<string>ERPForever needs access to reminders to help you manage tasks, deadlines, and business reminders integrated with your ERP system.</string>
+
+		<!-- SPEECH RECOGNITION (if you add voice features) -->
+		<key>NSSpeechRecognitionUsageDescription</key>
+		<string>ERPForever needs speech recognition access to provide voice-to-text features for faster data entry and voice commands in your business workflow.</string>
+
+		<!-- MOTION & FITNESS (if you track work activity) -->
+		<key>NSMotionUsageDescription</key>
+		<string>ERPForever needs motion access to track work-related activities and provide insights into your business productivity patterns.</string>
+
+		<!-- BLUETOOTH (if you connect to business devices) -->
+		<key>NSBluetoothAlwaysUsageDescription</key>
+		<string>ERPForever needs Bluetooth access to connect to business devices such as barcode scanners, printers, and other peripheral devices.</string>
+		<key>NSBluetoothPeripheralUsageDescription</key>
+		<string>ERPForever needs Bluetooth access to communicate with business peripherals and devices for enhanced ERP functionality.</string>
+
 	</dict>
 </plist>

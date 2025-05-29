@@ -348,13 +348,14 @@ Future<void> _handleJavaScriptRefresh() async {
     debugPrint('❌ Error during JavaScript refresh: $e');
   }
 }
+
 void _reinjectWebViewServiceJS() {
   debugPrint('💉 Re-injecting WebViewService JavaScript...');
 
   _controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading...");
     
-    // Enhanced click handler with full protocol support - FIXED VERSION
+    // Enhanced click handler with FIXED barcode detection for WebViewPage
     document.addEventListener('click', function(e) {
       let element = e.target;
       
@@ -366,7 +367,7 @@ void _reinjectWebViewServiceJS() {
         if (href) {
           console.log('🔍 WebViewPage: Click detected on href:', href);
           
-          // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
+          // PRIORITY: Handle external URLs with ?external=1 parameter
           if (href.includes('?external=1')) {
             console.log('🌐 WebViewPage: External URL detected, letting NavigationDelegate handle it');
             return; // Let NavigationDelegate handle this
@@ -471,12 +472,26 @@ void _reinjectWebViewServiceJS() {
             }
             return false;
           }
-          // Barcode detection
+          // FIXED: Barcode detection with proper continuous checking
           else if (href?.includes('barcode') || href?.includes('scan')) {
             e.preventDefault();
+            
+            // Enhanced continuous detection for WebViewPage
+            const isContinuous = href.includes('continuous') || 
+                                href.includes('Continuous') || 
+                                href.includes('scanContinuous') ||
+                                href.toLowerCase().includes('continuous') ||
+                                textContent.includes('continuous') ||
+                                element.classList.contains('continuous-scan') ||
+                                element.getAttribute('data-scan-type') === 'continuous' ||
+                                element.getAttribute('data-continuous') === 'true';
+            
             if (window.BarcodeScanner) {
-              window.BarcodeScanner.postMessage('scan');
-              console.log("📱 Barcode scan triggered via href");
+              const message = isContinuous ? 'scanContinuous' : 'scan';
+              window.BarcodeScanner.postMessage(message);
+              console.log("📱 WebViewPage: Barcode scan triggered via href - Type:", message, "URL:", href, "Continuous detected:", isContinuous);
+            } else {
+              console.error("❌ BarcodeScanner not available in WebViewPage");
             }
             return false;
           }
@@ -532,11 +547,28 @@ void _reinjectWebViewServiceJS() {
           return false;
         }
         
-        if (textContent.includes('scan barcode') || textContent.includes('qr code')) {
+        // FIXED: Enhanced barcode text detection with continuous support
+        if (textContent.includes('scan barcode') || textContent.includes('qr code') || textContent.includes('scan qr') || textContent.includes('barcode scan')) {
           e.preventDefault();
+          
+          // Enhanced continuous detection for text-based triggers
+          const isContinuous = textContent.includes('continuous') || 
+                              textContent.includes('scan continuously') ||
+                              textContent.includes('continuous scan') ||
+                              textContent.includes('continuously') ||
+                              element.classList.contains('continuous-scan') ||
+                              element.getAttribute('data-scan-type') === 'continuous' ||
+                              element.getAttribute('data-continuous') === 'true' ||
+                              element.closest('[data-scan-type="continuous"]') !== null ||
+                              element.closest('.continuous-scan') !== null ||
+                              element.closest('[data-continuous="true"]') !== null;
+          
           if (window.BarcodeScanner) {
-            window.BarcodeScanner.postMessage('scan');
-            console.log("📱 Barcode scan triggered via text");
+            const message = isContinuous ? 'scanContinuous' : 'scan';
+            window.BarcodeScanner.postMessage(message);
+            console.log("📱 WebViewPage: Barcode scan triggered via text - Type:", message, "Text:", textContent, "Continuous detected:", isContinuous);
+          } else {
+            console.error("❌ BarcodeScanner not available in WebViewPage");
           }
           return false;
         }
@@ -655,9 +687,9 @@ void _reinjectWebViewServiceJS() {
         }
       },
       
-      // Barcode System
+      // FIXED: Barcode System with enhanced continuous support for WebViewPage
       scanBarcode: function() {
-        console.log('📸 Scanning barcode...');
+        console.log('📸 WebViewPage: Scanning barcode (single)...');
         if (window.BarcodeScanner) {
           window.BarcodeScanner.postMessage('scan');
         } else {
@@ -666,11 +698,32 @@ void _reinjectWebViewServiceJS() {
       },
       
       scanBarcodeContinuous: function() {
-        console.log('📸 Scanning barcode (continuous)...');
+        console.log('📸 WebViewPage: Scanning barcode (continuous)...');
         if (window.BarcodeScanner) {
           window.BarcodeScanner.postMessage('scanContinuous');
         } else {
           console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      // Auto-detect scan type from URL or element
+      scanBarcodeAuto: function(element) {
+        if (element && typeof element === 'object') {
+          const isContinuous = element.classList?.contains('continuous-scan') ||
+                              element.getAttribute('data-scan-type') === 'continuous' ||
+                              element.getAttribute('data-continuous') === 'true' ||
+                              element.textContent?.toLowerCase().includes('continuous');
+          
+          console.log('📱 WebViewPage: Auto-detecting barcode scan type - continuous:', isContinuous);
+          
+          if (isContinuous) {
+            this.scanBarcodeContinuous();
+          } else {
+            this.scanBarcode();
+          }
+        } else {
+          console.log('📱 WebViewPage: No element provided, defaulting to single scan');
+          this.scanBarcode(); // Default to single scan
         }
       },
       
@@ -714,9 +767,17 @@ void _reinjectWebViewServiceJS() {
     };
 
     console.log("✅ ERPForever WebView JavaScript ready!");
-    console.log("🔧 All services reinjected in WebViewPage");
+    console.log("🔧 All services reinjected in WebViewPage with FIXED barcode detection");
+    
+    // Log debug info for barcode detection
+    console.log("📱 WebViewPage Barcode Detection Enhanced:");
+    console.log("  - href detection: barcode, scan + continuous variations");
+    console.log("  - text detection: scan barcode, qr code + continuous variations");
+    console.log("  - attribute detection: data-scan-type, data-continuous, .continuous-scan");
+    console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
   ''');
-}// Handle navigation requests properly
+}
+
 NavigationDecision _handleNavigationRequest(NavigationRequest request) {
   debugPrint('🔍 Handling navigation in WebViewPage: ${request.url}');
 

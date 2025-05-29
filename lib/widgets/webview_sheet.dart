@@ -1,4 +1,4 @@
-// lib/widgets/webview_sheet.dart - Complete Improved Native JS Pull-to-Refresh with Perfect Scrolling
+// lib/widgets/webview_sheet.dart - FIXED with proper context management like WebViewPage
 import 'dart:async';
 import 'package:ERPForever/pages/webview_page.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +31,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
   Timer? _loadingTimer;
   final String _channelName = 'SheetScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
   final String _refreshChannelName = 'SheetPullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
+  late String _pageId; // ADD THIS LINE - Same as WebViewPage
 
   @override
   void initState() {
@@ -38,14 +39,18 @@ class _WebViewSheetState extends State<WebViewSheet> {
     _initializeWebView();
   }
 
-
 void _initializeWebView() {
   // Use WebViewService.createController() to get all JavaScript bridges
   _controller = WebViewService().createController(widget.url, context);
 
-  // CRITICAL: Register this controller with WebViewService
-  WebViewService().updateController(_controller, context);
-  debugPrint('📋 WebViewSheet controller registered with WebViewService');
+  // CRITICAL: Register this controller with WebViewService - SAME AS WebViewPage
+  final pageId = 'WebViewSheet_${widget.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
+  WebViewService().pushController(_controller, context, pageId);
+
+  // Store the page ID for cleanup - SAME AS WebViewPage
+  _pageId = pageId;
+
+  debugPrint('📋 WebViewSheet controller pushed to stack with ID: $pageId');
 
   // Add JavaScript channel for scroll monitoring
   _controller.addJavaScriptChannel(
@@ -96,37 +101,51 @@ void _initializeWebView() {
           });
         }
         
-        // CRITICAL: Re-register controller with WebViewService after page loads
-        if (mounted) {
-          WebViewService().updateController(_controller, context);
-        }
-        
+        // CRITICAL: Re-inject all WebViewService JavaScript after page loads - SAME AS WebViewPage
+        _reinjectWebViewServiceJS();
+
         // Enhanced page setup for sheets
         _setupSheetPage();
         
         // Re-inject services and monitoring
         Future.delayed(const Duration(milliseconds: 800), () {
           if (mounted) {
-            _reinjectWebViewServiceJS();
             _injectScrollAndRefreshMonitoring();
           }
         });
       },
- onNavigationRequest: (NavigationRequest request) {
-  debugPrint('🔍 Sheet Navigation request: ${request.url}');
-  
-  // Update controller reference before handling navigation
-  if (mounted) {
-    WebViewService().updateController(_controller, context);
-  }
-  
-  // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
+      onNavigationRequest: (NavigationRequest request) {
+        debugPrint('🔍 Sheet Navigation request: ${request.url}');
+        
+        // SAME AS WebViewPage - Handle navigation requests
+        return _handleNavigationRequest(request);
+      },
+      onWebResourceError: (WebResourceError error) {
+        debugPrint('❌ Sheet web resource error: ${error.description}');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      },
+    ),
+  );
+
+  // Start monitoring loading state
+  _startLoadingMonitor();
+}
+
+// ADD THIS METHOD - Same as WebViewPage
+NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+  debugPrint('🔍 Handling navigation in WebViewSheet: ${request.url}');
+
+  // PRIORITY: Handle external URLs with ?external=1 parameter
   if (request.url.contains('?external=1')) {
     _handleExternalNavigation(request.url);
     return NavigationDecision.prevent;
   }
-  
-  // Handle new-web:// requests
+
+  // Handle new-web:// requests - PREVENT and open new WebView layer
   if (request.url.startsWith('new-web://')) {
     _handleNewWebNavigation(request.url);
     return NavigationDecision.prevent;
@@ -134,11 +153,11 @@ void _initializeWebView() {
 
   // Handle new-sheet:// requests
   if (request.url.startsWith('new-sheet://')) {
-    _handleSheetNavigation(request.url);
+    _handleSheetNavigation(request.url); 
     return NavigationDecision.prevent;
   }
 
-  // For loggedin:// requests, prevent to avoid issues
+  // For loggedin:// requests, also prevent to avoid issues
   if (request.url.startsWith('loggedin://')) {
     debugPrint('🔐 Login success detected in WebViewSheet - but user is already logged in');
     return NavigationDecision.prevent;
@@ -162,25 +181,10 @@ void _initializeWebView() {
     // These will be handled by the re-injected JavaScript
     return NavigationDecision.prevent;
   }
-  
+
+  // Allow normal navigation for other URLs
   return NavigationDecision.navigate;
-},
-      onWebResourceError: (WebResourceError error) {
-        debugPrint('❌ Sheet web resource error: ${error.description}');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      },
-    ),
-  );
-
-  // Start monitoring loading state
-  _startLoadingMonitor();
 }
-
-
 
 void _handleExternalNavigation(String url) {
   debugPrint('🌐 External navigation detected in WebViewSheet: $url');
@@ -236,6 +240,7 @@ void _handleExternalNavigation(String url) {
     _showUrlError('Failed to open external URL');
   }
 }
+
 void _handleNewWebNavigation(String url) {
   debugPrint('🌐 Opening new WebView from sheet: $url');
 
@@ -252,13 +257,20 @@ void _handleNewWebNavigation(String url) {
     }
   }
 
-  // Navigate to another WebViewPage
+  // Navigate to another WebViewPage - SAME AS WebViewPage
   Navigator.push(
     context,
     MaterialPageRoute(
       builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
     ),
-  );
+  ).then((_) {
+    // When returning from the new WebViewPage, re-register this controller - SAME AS WebViewPage
+    if (mounted && context.mounted) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        WebViewService().pushController(_controller, context, _pageId);
+      });
+    }
+  });
 }
 
 void _handleSheetNavigation(String url) {
@@ -299,6 +311,7 @@ void _showUrlError(String message) {
     );
   }
 }
+
   // Handle refresh triggered from JavaScript
   Future<void> _handleJavaScriptRefresh() async {
     debugPrint('🔄 Handling JavaScript refresh request in sheet');
@@ -435,12 +448,12 @@ void _showUrlError(String message) {
   }
 
 void _reinjectWebViewServiceJS() {
-  debugPrint('💉 Re-injecting WebViewService JavaScript...');
+  debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewSheet...');
 
   _controller.runJavaScript('''
-    console.log("🚀 ERPForever WebView JavaScript loading...");
+    console.log("🚀 ERPForever WebView JavaScript loading in WebViewSheet...");
     
-    // Enhanced click handler with full protocol support - FIXED VERSION
+    // Enhanced click handler with full protocol support - SAME AS WebViewPage
     document.addEventListener('click', function(e) {
       let element = e.target;
       
@@ -450,22 +463,22 @@ void _reinjectWebViewServiceJS() {
         
         // Handle all URL protocols FIRST - if we find href, process it and skip text checks
         if (href) {
-          console.log('🔍 WebViewPage: Click detected on href:', href);
+          console.log('🔍 WebViewSheet: Click detected on href:', href);
           
-          // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
+          // PRIORITY: Handle external URLs with ?external=1 parameter
           if (href.includes('?external=1')) {
-            console.log('🌐 WebViewPage: External URL detected, letting NavigationDelegate handle it');
+            console.log('🌐 WebViewSheet: External URL detected, letting NavigationDelegate handle it');
             return; // Let NavigationDelegate handle this
           }
           
           // PRIORITY: Handle new-web:// - Let NavigationDelegate handle this
           if (href.startsWith('new-web://')) {
-            console.log('🌐 WebViewPage: new-web:// link clicked - letting NavigationDelegate handle it');
+            console.log('🌐 WebViewSheet: new-web:// link clicked - letting NavigationDelegate handle it');
             return; // Exit the entire click handler
           }
           // PRIORITY: Handle new-sheet:// - Let NavigationDelegate handle this
           else if (href.startsWith('new-sheet://')) {
-            console.log('📋 WebViewPage: new-sheet:// link clicked - letting NavigationDelegate handle it');
+            console.log('📋 WebViewSheet: new-sheet:// link clicked - letting NavigationDelegate handle it');
             return; // Exit the entire click handler
           }
           // Alert requests
@@ -516,7 +529,7 @@ void _reinjectWebViewServiceJS() {
             e.preventDefault();
             if (window.AuthManager) {
               window.AuthManager.postMessage('logout');
-              console.log("🚪 WebViewPage: Logout triggered via URL (handled by JS)");
+              console.log("🚪 WebViewSheet: Logout triggered via URL (handled by JS)");
             } else {
               console.error("❌ AuthManager not available");
             }
@@ -560,9 +573,23 @@ void _reinjectWebViewServiceJS() {
           // Barcode detection
           else if (href?.includes('barcode') || href?.includes('scan')) {
             e.preventDefault();
+            
+            // Enhanced continuous detection for WebViewSheet
+            const isContinuous = href.includes('continuous') || 
+                                href.includes('Continuous') || 
+                                href.includes('scanContinuous') ||
+                                href.toLowerCase().includes('continuous') ||
+                                textContent.includes('continuous') ||
+                                element.classList.contains('continuous-scan') ||
+                                element.getAttribute('data-scan-type') === 'continuous' ||
+                                element.getAttribute('data-continuous') === 'true';
+            
             if (window.BarcodeScanner) {
-              window.BarcodeScanner.postMessage('scan');
-              console.log("📱 Barcode scan triggered via href");
+              const message = isContinuous ? 'scanContinuous' : 'scan';
+              window.BarcodeScanner.postMessage(message);
+              console.log("📱 WebViewSheet: Barcode scan triggered via href - Type:", message, "URL:", href, "Continuous detected:", isContinuous);
+            } else {
+              console.error("❌ BarcodeScanner not available in WebViewSheet");
             }
             return false;
           }
@@ -584,9 +611,9 @@ void _reinjectWebViewServiceJS() {
           e.preventDefault();
           if (window.AuthManager) {
             window.AuthManager.postMessage('logout');
-            console.log("🚪 WebViewPage: Logout triggered via specific logout element");
+            console.log("🚪 WebViewSheet: Logout triggered via specific logout element");
           } else {
-            console.error("❌ AuthManager not available in WebViewPage");
+            console.error("❌ AuthManager not available in WebViewSheet");
           }
           return false;
         }
@@ -618,11 +645,28 @@ void _reinjectWebViewServiceJS() {
           return false;
         }
         
-        if (textContent.includes('scan barcode') || textContent.includes('qr code')) {
+        // Enhanced barcode text detection with continuous support for WebViewSheet
+        if (textContent.includes('scan barcode') || textContent.includes('qr code') || textContent.includes('scan qr') || textContent.includes('barcode scan')) {
           e.preventDefault();
+          
+          // Enhanced continuous detection for text-based triggers
+          const isContinuous = textContent.includes('continuous') || 
+                              textContent.includes('scan continuously') ||
+                              textContent.includes('continuous scan') ||
+                              textContent.includes('continuously') ||
+                              element.classList.contains('continuous-scan') ||
+                              element.getAttribute('data-scan-type') === 'continuous' ||
+                              element.getAttribute('data-continuous') === 'true' ||
+                              element.closest('[data-scan-type="continuous"]') !== null ||
+                              element.closest('.continuous-scan') !== null ||
+                              element.closest('[data-continuous="true"]') !== null;
+          
           if (window.BarcodeScanner) {
-            window.BarcodeScanner.postMessage('scan');
-            console.log("📱 Barcode scan triggered via text");
+            const message = isContinuous ? 'scanContinuous' : 'scan';
+            window.BarcodeScanner.postMessage(message);
+            console.log("📱 WebViewSheet: Barcode scan triggered via text - Type:", message, "Text:", textContent, "Continuous detected:", isContinuous);
+          } else {
+            console.error("❌ BarcodeScanner not available in WebViewSheet");
           }
           return false;
         }
@@ -631,7 +675,7 @@ void _reinjectWebViewServiceJS() {
       }
     }, true);
 
-    // Enhanced utility object with complete feature set
+    // Enhanced utility object with complete feature set - SAME AS WebViewPage
     window.ERPForever = {
       // Alert System
       showAlert: function(message) {
@@ -741,9 +785,9 @@ void _reinjectWebViewServiceJS() {
         }
       },
       
-      // Barcode System
+      // Barcode System with enhanced continuous support for WebViewSheet
       scanBarcode: function() {
-        console.log('📸 Scanning barcode...');
+        console.log('📸 WebViewSheet: Scanning barcode (single)...');
         if (window.BarcodeScanner) {
           window.BarcodeScanner.postMessage('scan');
         } else {
@@ -752,11 +796,32 @@ void _reinjectWebViewServiceJS() {
       },
       
       scanBarcodeContinuous: function() {
-        console.log('📸 Scanning barcode (continuous)...');
+        console.log('📸 WebViewSheet: Scanning barcode (continuous)...');
         if (window.BarcodeScanner) {
           window.BarcodeScanner.postMessage('scanContinuous');
         } else {
           console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      // Auto-detect scan type from URL or element
+      scanBarcodeAuto: function(element) {
+        if (element && typeof element === 'object') {
+          const isContinuous = element.classList?.contains('continuous-scan') ||
+                              element.getAttribute('data-scan-type') === 'continuous' ||
+                              element.getAttribute('data-continuous') === 'true' ||
+                              element.textContent?.toLowerCase().includes('continuous');
+          
+          console.log('📱 WebViewSheet: Auto-detecting barcode scan type - continuous:', isContinuous);
+          
+          if (isContinuous) {
+            this.scanBarcodeContinuous();
+          } else {
+            this.scanBarcode();
+          }
+        } else {
+          console.log('📱 WebViewSheet: No element provided, defaulting to single scan');
+          this.scanBarcode(); // Default to single scan
         }
       },
       
@@ -799,8 +864,15 @@ void _reinjectWebViewServiceJS() {
       version: '1.1.0'
     };
 
-    console.log("✅ ERPForever WebView JavaScript ready!");
-    console.log("🔧 All services reinjected in WebViewPage");
+    console.log("✅ ERPForever WebView JavaScript ready in WebViewSheet!");
+    console.log("🔧 All services reinjected in WebViewSheet with FIXED barcode detection");
+    
+    // Log debug info for barcode detection
+    console.log("📱 WebViewSheet Barcode Detection Enhanced:");
+    console.log("  - href detection: barcode, scan + continuous variations");
+    console.log("  - text detection: scan barcode, qr code + continuous variations");
+    console.log("  - attribute detection: data-scan-type, data-continuous, .continuous-scan");
+    console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
   ''');
 }
 
@@ -1107,8 +1179,8 @@ Future<bool> _onWillPop() async {
         setState(() {
           _canGoBack = canGoBack;
         });
-        // Re-register controller after navigation
-        WebViewService().updateController(_controller, context);
+        // Re-register controller after navigation - SAME AS WebViewPage
+        WebViewService().pushController(_controller, context, _pageId);
       }
       return false;
     }
@@ -1116,17 +1188,17 @@ Future<bool> _onWillPop() async {
     debugPrint('❌ Error in _onWillPop: $e');
   }
   
-  // Sheet is closing, clear controller reference
+  // Sheet is closing, clear controller reference - SAME AS WebViewPage
   _clearControllerReference();
   return true;
 }
+
+// ADD THIS METHOD - Same as WebViewPage
 void _clearControllerReference() {
-  debugPrint('🧹 WebViewSheet clearing controller reference');
+  debugPrint('🧹 WebViewSheet clearing controller reference: $_pageId');
   
-  // Only clear if this is the current controller in WebViewService
-  if (WebViewService().isControllerValid()) {
-    WebViewService().clearCurrentController();
-  }
+  // Pop this specific controller from the stack - SAME AS WebViewPage
+  WebViewService().popController(_pageId);
 }
 
   Future<void> _goBack() async {
@@ -1168,6 +1240,7 @@ Widget build(BuildContext context) {
     ),
   );
 }
+
   Widget _buildWebViewContent(bool isDarkMode) {
     return Container(
       decoration: const BoxDecoration(
@@ -1226,19 +1299,16 @@ Widget build(BuildContext context) {
             child: Row(
               children: [
                 // Back button
-            // Close button
-IconButton(
-  icon: Icon(
-    Icons.close,
-    color: isDarkMode ? Colors.white : Colors.black,
-    size: 24,
-  ),
-  onPressed: () {
-    _clearControllerReference();
-    Navigator.pop(context);
-  },
-  tooltip: 'Close',
-),
+                if (_canGoBack)
+                  IconButton(
+                    icon: Icon(
+                      Icons.arrow_back,
+                      color: isDarkMode ? Colors.white : Colors.black,
+                      size: 24,
+                    ),
+                    onPressed: _goBack,
+                    tooltip: 'Back',
+                  ),
                 
                 const SizedBox(width: 8),
                 
@@ -1263,7 +1333,10 @@ IconButton(
                     color: isDarkMode ? Colors.white : Colors.black,
                     size: 24,
                   ),
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    _clearControllerReference(); // ADD THIS LINE - Same as WebViewPage
+                    Navigator.pop(context);
+                  },
                   tooltip: 'Close',
                 ),
               ],
@@ -1311,17 +1384,13 @@ IconButton(
 
 @override
 void dispose() {
-  debugPrint('🧹 WebViewSheet disposing');
+  debugPrint('🧹 WebViewSheet disposing - popping controller from stack: $_pageId');
   
   // Cancel any timers
   _loadingTimer?.cancel();
   
-  // Clear controller reference
-  _clearControllerReference();
-  
-  // Clean up WebViewService
-  WebViewService().dispose();
+  // Pop this specific controller from the stack - SAME AS WebViewPage
+  WebViewService().popController(_pageId);
   
   super.dispose();
-}
-}
+}}

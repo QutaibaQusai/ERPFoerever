@@ -1,4 +1,3 @@
-// Fixed lib/pages/login_page.dart
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
@@ -69,11 +68,9 @@ class _LoginPageState extends State<LoginPage> {
   void _handleLoginSuccess() async {
     debugPrint('✅ User logged in successfully');
     
-    // IMPORTANT FIX: Update the AuthService to save login state
     final authService = Provider.of<AuthService>(context, listen: false);
     await authService.login();
     
-    // Navigate to main screen and remove login page from stack
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -90,14 +87,12 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: isDarkMode ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
      
-      body: SafeArea(
-        child: Stack(
-          children: [
-            WebViewWidget(controller: _controller),
-            if (_isLoading) 
-              const LoadingWidget(message: "Loading login page..."),
-          ],
-        ),
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_isLoading) 
+            const LoadingWidget(message: "Loading login page..."),
+        ],
       ),
     );
   }

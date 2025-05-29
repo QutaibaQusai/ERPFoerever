@@ -24,6 +24,9 @@ class _WebViewPageState extends State<WebViewPage> {
       'RegularWebViewScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
       final String _refreshChannelName =
     'PullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
+      late String _pageId; // ADD THIS LINE
+
+    
 
   @override
   void initState() {
@@ -31,84 +34,100 @@ class _WebViewPageState extends State<WebViewPage> {
     _initializeWebView();
   }
 
-  void _initializeWebView() {
-    // Create controller using WebViewService to get all JavaScript bridges
-    _controller = WebViewService().createController(widget.url, context);
+void _initializeWebView() {
+  // Create controller using WebViewService to get all JavaScript bridges
+  _controller = WebViewService().createController(widget.url, context);
 
-    // Add JavaScript channel for scroll monitoring
-    _controller.addJavaScriptChannel(
-      _channelName,
-      onMessageReceived: (JavaScriptMessage message) {
-        try {
-          final isAtTop = message.message == 'true';
+  // CRITICAL: Register this controller with WebViewService
+final pageId = 'WebViewPage_${widget.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
+WebViewService().pushController(_controller, context, pageId);
 
-          if (mounted && _isAtTop != isAtTop) {
-            setState(() {
-              _isAtTop = isAtTop;
-            });
-            debugPrint(
-              'Regular WebView scroll: ${isAtTop ? "TOP" : "SCROLLED"}',
-            );
-          }
-        } catch (e) {
-          debugPrint('Error parsing scroll message: $e');
+// Store the page ID for cleanup
+_pageId = pageId;
+
+debugPrint('📋 WebViewPage controller pushed to stack with ID: $pageId');
+  // Add JavaScript channel for scroll monitoring
+  _controller.addJavaScriptChannel(
+    _channelName,
+    onMessageReceived: (JavaScriptMessage message) {
+      try {
+        final isAtTop = message.message == 'true';
+
+        if (mounted && _isAtTop != isAtTop) {
+          setState(() {
+            _isAtTop = isAtTop;
+          });
+          debugPrint(
+            'Regular WebView scroll: ${isAtTop ? "TOP" : "SCROLLED"}',
+          );
+        }
+      } catch (e) {
+        debugPrint('Error parsing scroll message: $e');
+      }
+    },
+  );
+
+  // Add JavaScript channel for pull-to-refresh
+  _controller.addJavaScriptChannel(
+    _refreshChannelName,
+    onMessageReceived: (JavaScriptMessage message) {
+      if (message.message == 'refresh') {
+        debugPrint('🔄 Pull-to-refresh triggered from JavaScript');
+        _handleJavaScriptRefresh();
+      }
+    },
+  );
+
+  // IMPORTANT: Override the navigation delegate to handle new-web:// properly
+  _controller.setNavigationDelegate(
+    NavigationDelegate(
+      onPageStarted: (String url) {
+        debugPrint('⏳ Page started loading: $url');
+        if (mounted) {
+          setState(() {
+            _isLoading = true;
+          });
         }
       },
-    );
-    // Add JavaScript channel for pull-to-refresh
-_controller.addJavaScriptChannel(
-  _refreshChannelName,
-  onMessageReceived: (JavaScriptMessage message) {
-    if (message.message == 'refresh') {
-      debugPrint('🔄 Pull-to-refresh triggered from JavaScript');
-      _handleJavaScriptRefresh();
-    }
-  },
-);
+      onPageFinished: (String url) {
 
-    // IMPORTANT: Override the navigation delegate to handle new-web:// properly
-    _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          debugPrint('⏳ Page started loading: $url');
-          if (mounted) {
-            setState(() {
-              _isLoading = true;
-            });
-          }
-        },
-        onPageFinished: (String url) {
-          debugPrint('✅ Page finished loading: $url');
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-          }
 
-          // CRITICAL: Re-inject all WebViewService JavaScript after page loads
-          _reinjectWebViewServiceJS();
-
-          // Then inject scroll monitoring
-          Future.delayed(const Duration(milliseconds: 500), () {
-            _injectScrollMonitoring();
+        debugPrint('✅ Page finished loading: $url');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
           });
-          _injectPullToRefresh();
-        },
-        onNavigationRequest: (NavigationRequest request) {
-          debugPrint('🔍 WebViewPage Navigation request: ${request.url}');
-          return _handleNavigationRequest(request);
-        },
-        onWebResourceError: (WebResourceError error) {
-          debugPrint('❌ Web resource error: ${error.description}');
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-          }
-        },
-      ),
-    );
-  }
+        }
+
+
+
+        // CRITICAL: Re-inject all WebViewService JavaScript after page loads
+        _reinjectWebViewServiceJS();
+
+        // Then inject scroll monitoring
+        Future.delayed(const Duration(milliseconds: 500), () {
+          _injectScrollMonitoring();
+        });
+        _injectPullToRefresh();
+      },
+      onNavigationRequest: (NavigationRequest request) {
+        debugPrint('🔍 WebViewPage Navigation request: ${request.url}');
+        
+
+        
+        return _handleNavigationRequest(request);
+      },
+      onWebResourceError: (WebResourceError error) {
+        debugPrint('❌ Web resource error: ${error.description}');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      },
+    ),
+  );
+}
   // Inject native JavaScript pull-to-refresh functionality
 void _injectPullToRefresh() {
   _controller.runJavaScript('''
@@ -746,12 +765,20 @@ Future<void> _handleJavaScriptRefresh() async {
     }
 
     // Navigate to another WebViewPage (creating a layer)
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
-      ),
-    );
+   // Navigate to another WebViewPage (creating a layer)
+Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
+  ),
+).then((_) {
+  // When returning from the new WebViewPage, re-register this controller
+  if (mounted && context.mounted) {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      WebViewService().pushController(_controller, context, _pageId);
+    });
+  }
+});
   }
 
   // Handle new-sheet:// navigation - Open CURRENT page in sheet
@@ -881,10 +908,13 @@ body: _buildWebViewContent(isDarkMode),    );
   );
 }
 
-  @override
-  void dispose() {
-    // Clean up WebViewService when disposing
-    WebViewService().dispose();
-    super.dispose();
-  }
+@override
+void dispose() {
+  debugPrint('🧹 WebViewPage disposing - popping controller from stack: $_pageId');
+  
+  // Pop this specific controller from the stack
+  WebViewService().popController(_pageId);
+  
+  super.dispose();
+}
 }

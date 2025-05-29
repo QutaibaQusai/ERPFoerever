@@ -37,82 +37,104 @@ class _WebViewSheetState extends State<WebViewSheet> {
     _initializeWebView();
   }
 
-  void _initializeWebView() {
-    // Use WebViewService.createController() to get all JavaScript bridges
-    _controller = WebViewService().createController(widget.url, context);
 
-    // Add JavaScript channel for scroll monitoring
-    _controller.addJavaScriptChannel(
-      _channelName,
-      onMessageReceived: (JavaScriptMessage message) {
-        try {
-          final isAtTop = message.message == 'true';
-          
-          if (mounted && _isAtTop != isAtTop) {
-            setState(() {
-              _isAtTop = isAtTop;
-            });
-            debugPrint('📍 Sheet scroll position: ${isAtTop ? "TOP" : "SCROLLED"}');
-          }
-        } catch (e) {
-          debugPrint('❌ Error parsing scroll message: $e');
+void _initializeWebView() {
+  // Use WebViewService.createController() to get all JavaScript bridges
+  _controller = WebViewService().createController(widget.url, context);
+
+  // CRITICAL: Register this controller with WebViewService
+  WebViewService().updateController(_controller, context);
+  debugPrint('📋 WebViewSheet controller registered with WebViewService');
+
+  // Add JavaScript channel for scroll monitoring
+  _controller.addJavaScriptChannel(
+    _channelName,
+    onMessageReceived: (JavaScriptMessage message) {
+      try {
+        final isAtTop = message.message == 'true';
+        
+        if (mounted && _isAtTop != isAtTop) {
+          setState(() {
+            _isAtTop = isAtTop;
+          });
+          debugPrint('📍 Sheet scroll position: ${isAtTop ? "TOP" : "SCROLLED"}');
+        }
+      } catch (e) {
+        debugPrint('❌ Error parsing scroll message: $e');
+      }
+    },
+  );
+
+  // Add JavaScript channel for pull-to-refresh
+  _controller.addJavaScriptChannel(
+    _refreshChannelName,
+    onMessageReceived: (JavaScriptMessage message) {
+      if (message.message == 'refresh') {
+        debugPrint('🔄 Pull-to-refresh triggered from JavaScript in sheet');
+        _handleJavaScriptRefresh();
+      }
+    },
+  );
+
+  // Set proper navigation delegate to handle page reloads
+  _controller.setNavigationDelegate(
+    NavigationDelegate(
+      onPageStarted: (String url) {
+        debugPrint('⏳ Sheet page started loading: $url');
+        if (mounted) {
+          setState(() {
+            _isLoading = true;
+          });
         }
       },
-    );
-
-    // Add JavaScript channel for pull-to-refresh
-    _controller.addJavaScriptChannel(
-      _refreshChannelName,
-      onMessageReceived: (JavaScriptMessage message) {
-        if (message.message == 'refresh') {
-          debugPrint('🔄 Pull-to-refresh triggered from JavaScript in sheet');
-          _handleJavaScriptRefresh();
+      onPageFinished: (String url) {
+        debugPrint('✅ Sheet page finished loading: $url');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
         }
-      },
-    );
-
-    // Set proper navigation delegate to handle page reloads
-    _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          debugPrint('⏳ Sheet page started loading: $url');
+        
+        // CRITICAL: Re-register controller with WebViewService after page loads
+        if (mounted) {
+          WebViewService().updateController(_controller, context);
+        }
+        
+        // Enhanced page setup for sheets
+        _setupSheetPage();
+        
+        // Re-inject services and monitoring
+        Future.delayed(const Duration(milliseconds: 800), () {
           if (mounted) {
-            setState(() {
-              _isLoading = true;
-            });
-          }
-        },
-        onPageFinished: (String url) {
-          debugPrint('✅ Sheet page finished loading: $url');
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
-          }
-          
-          // Enhanced page setup for sheets
-          _setupSheetPage();
-          
-          // Re-inject services and monitoring
-          Future.delayed(const Duration(milliseconds: 800), () {
             _reinjectWebViewServiceJS();
             _injectScrollAndRefreshMonitoring();
-          });
-        },
-        onWebResourceError: (WebResourceError error) {
-          debugPrint('❌ Sheet web resource error: ${error.description}');
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-            });
           }
-        },
-      ),
-    );
+        });
+      },
+      onNavigationRequest: (NavigationRequest request) {
+        debugPrint('🔍 Sheet Navigation request: ${request.url}');
+        
+        // Update controller reference before handling navigation
+        if (mounted) {
+          WebViewService().updateController(_controller, context);
+        }
+        
+        return NavigationDecision.navigate;
+      },
+      onWebResourceError: (WebResourceError error) {
+        debugPrint('❌ Sheet web resource error: ${error.description}');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      },
+    ),
+  );
 
-    // Start monitoring loading state
-    _startLoadingMonitor();
-  }
+  // Start monitoring loading state
+  _startLoadingMonitor();
+}
 
   // Handle refresh triggered from JavaScript
   Future<void> _handleJavaScriptRefresh() async {
@@ -881,7 +903,8 @@ class _WebViewSheetState extends State<WebViewSheet> {
     ''');
   }
 
-  Future<bool> _onWillPop() async {
+Future<bool> _onWillPop() async {
+  try {
     if (await _controller.canGoBack()) {
       await _controller.goBack();
       final canGoBack = await _controller.canGoBack();
@@ -889,11 +912,27 @@ class _WebViewSheetState extends State<WebViewSheet> {
         setState(() {
           _canGoBack = canGoBack;
         });
+        // Re-register controller after navigation
+        WebViewService().updateController(_controller, context);
       }
       return false;
     }
-    return true;
+  } catch (e) {
+    debugPrint('❌ Error in _onWillPop: $e');
   }
+  
+  // Sheet is closing, clear controller reference
+  _clearControllerReference();
+  return true;
+}
+void _clearControllerReference() {
+  debugPrint('🧹 WebViewSheet clearing controller reference');
+  
+  // Only clear if this is the current controller in WebViewService
+  if (WebViewService().isControllerValid()) {
+    WebViewService().clearCurrentController();
+  }
+}
 
   Future<void> _goBack() async {
     if (await _controller.canGoBack()) {
@@ -908,33 +947,32 @@ class _WebViewSheetState extends State<WebViewSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+Widget build(BuildContext context) {
+  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Container(
-        height: MediaQuery.of(context).size.height * widget.heightFactor,
-        decoration: BoxDecoration(
-          color: isDarkMode ? Colors.black : Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-          ),
-        ),
-        child: Column(
-          children: [
-            _buildSheetHeader(context, isDarkMode),
-            const Divider(height: 1),
-            Expanded(
-              child: _buildWebViewContent(isDarkMode),
-            ),
-          ],
+  return WillPopScope(
+    onWillPop: _onWillPop,
+    child: Container(
+      height: MediaQuery.of(context).size.height * widget.heightFactor,
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.black : Colors.white,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
         ),
       ),
-    );
-  }
-
+      child: Column(
+        children: [
+          _buildSheetHeader(context, isDarkMode),
+          const Divider(height: 1),
+          Expanded(
+            child: _buildWebViewContent(isDarkMode),
+          ),
+        ],
+      ),
+    ),
+  );
+}
   Widget _buildWebViewContent(bool isDarkMode) {
     return Container(
       decoration: const BoxDecoration(
@@ -993,22 +1031,19 @@ class _WebViewSheetState extends State<WebViewSheet> {
             child: Row(
               children: [
                 // Back button
-                IconButton(
-                  icon: Icon(
-                    Icons.arrow_back_ios,
-                    color: _canGoBack 
-                      ? (isDarkMode ? Colors.white : Colors.black)
-                      : (isDarkMode ? Colors.grey[600] : Colors.grey[400]),
-                    size: 25,
-                  ),
-                  onPressed: _canGoBack ? _goBack : null,
-                  tooltip: 'Go Back',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
-                ),
+            // Close button
+IconButton(
+  icon: Icon(
+    Icons.close,
+    color: isDarkMode ? Colors.white : Colors.black,
+    size: 24,
+  ),
+  onPressed: () {
+    _clearControllerReference();
+    Navigator.pop(context);
+  },
+  tooltip: 'Close',
+),
                 
                 const SizedBox(width: 8),
                 
@@ -1079,10 +1114,19 @@ class _WebViewSheetState extends State<WebViewSheet> {
     );
   }
 
-  @override
-  void dispose() {
-    _loadingTimer?.cancel();
-    WebViewService().dispose();
-    super.dispose();
-  }
+@override
+void dispose() {
+  debugPrint('🧹 WebViewSheet disposing');
+  
+  // Cancel any timers
+  _loadingTimer?.cancel();
+  
+  // Clear controller reference
+  _clearControllerReference();
+  
+  // Clean up WebViewService
+  WebViewService().dispose();
+  
+  super.dispose();
+}
 }

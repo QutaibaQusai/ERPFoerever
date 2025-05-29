@@ -21,8 +21,18 @@ class WebViewService {
   factory WebViewService() => _instance;
   WebViewService._internal();
 
-  BuildContext? _currentContext;
-  WebViewController? _currentController;
+
+  final List<Map<String, dynamic>> _controllerStack = [];
+
+BuildContext? get _currentContext {
+  if (_controllerStack.isEmpty) return null;
+  return _controllerStack.last['context'] as BuildContext?;
+}
+
+WebViewController? get _currentController {
+  if (_controllerStack.isEmpty) return null;
+  return _controllerStack.last['controller'] as WebViewController?;
+}
 
   void navigate(
     BuildContext context, {
@@ -67,12 +77,7 @@ class WebViewService {
   WebViewController createController(String url, [BuildContext? context]) {
     debugPrint('🌐 Creating WebView controller for: $url');
 
-    // Store context for interactions
-    _currentContext = context;
-
-    // Create the controller
     final controller = WebViewController();
-    _currentController = controller;
 
     // Configure the controller
     controller
@@ -247,81 +252,90 @@ class WebViewService {
     return NavigationDecision.navigate;
   }
 
-  void _handleAlertRequest(String message) async {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for alert request');
-      return;
-    }
-
-    debugPrint('🚨 Processing alert request: $message');
-
-    try {
-      Map<String, dynamic> result;
-      String alertType = AlertService().getAlertType(message);
-
-      switch (alertType) {
-        case 'alert':
-          result = await AlertService().showAlertFromUrl(
-            message,
-            _currentContext!,
-          );
-          break;
-        case 'confirm':
-          result = await AlertService().showConfirmFromUrl(
-            message,
-            _currentContext!,
-          );
-          break;
-        case 'prompt':
-          result = await AlertService().showPromptFromUrl(
-            message,
-            _currentContext!,
-          );
-          break;
-        default:
-          // Fallback: treat as simple alert
-          result = await AlertService().showAlertFromUrl(
-            message,
-            _currentContext!,
-          );
-          break;
-      }
-
-      // Send result back to WebView
-      _sendAlertResultToWebView(result, alertType);
-    } catch (e) {
-      debugPrint('❌ Error handling alert request: $e');
-
-      _sendAlertResultToWebView({
-        'success': false,
-        'error': 'Failed to handle alert: ${e.toString()}',
-        'errorCode': 'UNKNOWN_ERROR',
-      }, 'alert');
-    }
+ void _handleAlertRequest(String message) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for alert request');
+    return;
   }
 
-  void _sendAlertResultToWebView(
-    Map<String, dynamic> result,
-    String alertType,
-  ) {
-    if (_currentController == null) {
-      debugPrint('❌ No WebView controller available for alert result');
-      return;
+  // ADD THIS CONTEXT VALIDATION
+  if (!_currentContext!.mounted) {
+    debugPrint('❌ Context is no longer mounted for alert request');
+    return;
+  }
+
+  debugPrint('🚨 Processing alert request: $message');
+
+  try {
+    Map<String, dynamic> result;
+    String alertType = AlertService().getAlertType(message);
+
+    switch (alertType) {
+      case 'alert':
+        result = await AlertService().showAlertFromUrl(
+          message,
+          _currentContext!,
+        );
+        break;
+      case 'confirm':
+        result = await AlertService().showConfirmFromUrl(
+          message,
+          _currentContext!,
+        );
+        break;
+      case 'prompt':
+        result = await AlertService().showPromptFromUrl(
+          message,
+          _currentContext!,
+        );
+        break;
+      default:
+        result = await AlertService().showAlertFromUrl(
+          message,
+          _currentContext!,
+        );
+        break;
     }
 
-    debugPrint('📱 Sending alert result to WebView: $alertType');
+    // Send result back to WebView
+    _sendAlertResultToWebView(result, alertType);
+  } catch (e) {
+    debugPrint('❌ Error handling alert request: $e');
 
-    final success = result['success'] ?? false;
-    final error = (result['error'] ?? '').replaceAll('"', '\\"');
-    final errorCode = result['errorCode'] ?? '';
-    final message = (result['message'] ?? '').replaceAll('"', '\\"');
-    final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
-    final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
-    final confirmed = result['confirmed'] ?? false;
-    final cancelled = result['cancelled'] ?? false;
-    final dismissed = result['dismissed'] ?? false;
+    _sendAlertResultToWebView({
+      'success': false,
+      'error': 'Failed to handle alert: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+    }, 'alert');
+  }
+}
 
-    _currentController!.runJavaScript('''
+
+void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
+  if (_currentController == null) {
+    debugPrint('❌ No WebView controller available for alert result');
+    return;
+  }
+
+  if (!isControllerValid()) {
+    debugPrint('❌ WebView controller is no longer valid');
+    return;
+  }
+
+  debugPrint('📱 Sending alert result to WebView: $alertType');
+
+  // Rest of the method stays the same...
+  final success = result['success'] ?? false;
+  final error = (result['error'] ?? '').replaceAll('"', '\\"');
+  final errorCode = result['errorCode'] ?? '';
+  final message = (result['message'] ?? '').replaceAll('"', '\\"');
+  final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
+  final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
+  final confirmed = result['confirmed'] ?? false;
+  final cancelled = result['cancelled'] ?? false;
+  final dismissed = result['dismissed'] ?? false;
+
+  _currentController!.runJavaScript('''
     try {
       console.log("🚨 Alert result received: Type=$alertType, Success=$success");
       
@@ -379,7 +393,7 @@ class WebViewService {
       console.error("❌ Error handling alert result:", error);
     }
   ''');
-  }
+}
 
   void _handlePdfSaveRequest(String message) async {
     if (_currentContext == null) {
@@ -1148,44 +1162,49 @@ class WebViewService {
     }
   }
 
-  /// Handle location requests
-  void _handleLocationRequest(String message) async {
-    if (_currentContext == null || _currentController == null) {
-      debugPrint('❌ No context or controller available for location request');
-      return;
-    }
-
-    debugPrint('🌍 Processing location request...');
-
-    try {
-      // Show loading dialog
-      _showLocationLoadingDialog();
-
-      Map<String, dynamic> locationResult =
-          await LocationService().getCurrentLocation();
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      // Send result to WebView
-      _sendLocationToWebView(locationResult);
-    } catch (e) {
-      debugPrint('❌ Error handling location request: $e');
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      _sendLocationToWebView({
-        'success': false,
-        'error': 'Failed to get location: ${e.toString()}',
-        'errorCode': 'UNKNOWN_ERROR',
-      });
-    }
+void _handleLocationRequest(String message) async {
+  if (_currentContext == null || _currentController == null) {
+    debugPrint('❌ No context or controller available for location request');
+    return;
   }
+
+  // ADD THIS CONTEXT VALIDATION
+  if (!_currentContext!.mounted) {
+    debugPrint('❌ Context is no longer mounted for location request');
+    return;
+  }
+
+  debugPrint('🌍 Processing location request...');
+
+  try {
+    // Show loading dialog
+    _showLocationLoadingDialog();
+
+    Map<String, dynamic> locationResult =
+        await LocationService().getCurrentLocation();
+
+    // VALIDATE CONTEXT AGAIN before hiding dialog
+    if (_currentContext != null && _currentContext!.mounted && Navigator.canPop(_currentContext!)) {
+      Navigator.of(_currentContext!).pop();
+    }
+
+    // Send result to WebView
+    _sendLocationToWebView(locationResult);
+  } catch (e) {
+    debugPrint('❌ Error handling location request: $e');
+
+    // VALIDATE CONTEXT before hiding dialog
+    if (_currentContext != null && _currentContext!.mounted && Navigator.canPop(_currentContext!)) {
+      Navigator.of(_currentContext!).pop();
+    }
+
+    _sendLocationToWebView({
+      'success': false,
+      'error': 'Failed to get location: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+    });
+  }
+}
 
   void _showLocationLoadingDialog() {
     if (_currentContext == null) return;
@@ -2039,13 +2058,71 @@ class WebViewService {
   }
 
   // Update context
-  void updateContext(BuildContext context) {
-    _currentContext = context;
+void updateContext(BuildContext context) {
+  if (_controllerStack.isNotEmpty) {
+    _controllerStack.last['context'] = context;
   }
-
+}
   // Clean up
-  void dispose() {
-    _currentContext = null;
-    _currentController = null;
+void dispose() {
+  _controllerStack.clear();
+}
+
+void pushController(WebViewController controller, BuildContext context, String identifier) {
+  debugPrint('📚 Pushing controller to stack: $identifier (Stack size will be: ${_controllerStack.length + 1})');
+  
+  // PREVENT DUPLICATE IDENTIFIERS
+  _controllerStack.removeWhere((item) => item['identifier'] == identifier);
+  
+  _controllerStack.add({
+    'controller': controller,
+    'context': context,
+    'identifier': identifier,
+    'timestamp': DateTime.now(),
+  });
+  
+  debugPrint('✅ Controller stack updated. Current: $identifier (Final size: ${_controllerStack.length})');
+}
+
+void popController(String identifier) {
+  debugPrint('📚 Attempting to pop controller: $identifier (Current stack size: ${_controllerStack.length})');
+  
+  if (_controllerStack.isEmpty) {
+    debugPrint('⚠️ Controller stack is empty, nothing to pop');
+    return;
   }
+  
+  // Find and remove the controller with matching identifier
+  _controllerStack.removeWhere((item) => item['identifier'] == identifier);
+  
+  debugPrint('✅ Controller popped. New stack size: ${_controllerStack.length}');
+  
+  if (_controllerStack.isNotEmpty) {
+    final current = _controllerStack.last;
+    debugPrint('🔄 Restored controller: ${current['identifier']}');
+  } else {
+    debugPrint('📭 Controller stack is now empty');
+  }
+}
+int getStackSize() {
+  return _controllerStack.length;
+}
+
+
+
+
+
+void clearCurrentController() {
+  debugPrint('🧹 Clearing all controller references');
+  _controllerStack.clear();
+}
+bool isControllerValid() {
+  return _currentController != null && _currentContext != null;
+}
+void updateController(WebViewController controller, BuildContext context) {
+  // This method is now used for MainScreen only
+  final identifier = 'MainScreen_${DateTime.now().millisecondsSinceEpoch}';
+  pushController(controller, context, identifier);
+}
+
 }

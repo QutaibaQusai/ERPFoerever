@@ -209,6 +209,8 @@ void _initializeLoadingStates() {
 Widget _buildWebView(int index, String url) {
   final controller = _controllerManager.getController(index, url, context);
 
+
+  
   // FIXED: Check if refresh channel is already added to prevent duplicate channel error
   if (_refreshChannelAdded[index] != true) {
     final refreshChannelName = _refreshChannelNames[index]!;
@@ -222,7 +224,7 @@ Widget _buildWebView(int index, String url) {
           }
         },
       );
-      _refreshChannelAdded[index] = true; // Mark as added
+      _refreshChannelAdded[index] = true;
       debugPrint('✅ Pull-to-refresh channel added for tab $index: $refreshChannelName');
     } catch (e) {
       debugPrint('❌ Error adding refresh channel for tab $index: $e');
@@ -249,6 +251,7 @@ Widget _buildWebView(int index, String url) {
             _loadingStates[index] = false;
           });
         }
+
         _injectScrollMonitoring(controller, index);
         
         // Add native pull-to-refresh after page loads
@@ -264,15 +267,15 @@ Widget _buildWebView(int index, String url) {
         }
       },
       onNavigationRequest: (NavigationRequest request) {
-        return  _handleNavigationRequest(request);
+        // Update controller reference before handling navigation
+        WebViewService().updateController(controller, context);
+        return _handleNavigationRequest(request);
       },
     ),
   );
 
   return WebViewWidget(controller: controller);
 }
-  // NEW: Inject native pull-to-refresh functionality
-
 
 // FIXED: Inject native pull-to-refresh functionality (JavaScript only)
 void _injectNativePullToRefresh(WebViewController controller, int index) {
@@ -1126,30 +1129,42 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
     ''');
   }
 
-  void _onItemTapped(int index) {
-    final config = _configService.config;
-    if (config == null) return;
+void _onItemTapped(int index) {
+  final config = _configService.config;
+  if (config == null) return;
 
-    final item = config.mainIcons[index];
+  final item = config.mainIcons[index];
 
-    if (item.linkType == 'sheet_webview') {
-      WebViewService().navigate(
-        context,
-        url: item.link,
-        linkType: item.linkType,
-        title: item.title,
-      );
-    } else {
-      setState(() {
-        _selectedIndex = index;
-      });
-    }
+  if (item.linkType == 'sheet_webview') {
+    WebViewService().navigate(
+      context,
+      url: item.link,
+      linkType: item.linkType,
+      title: item.title,
+    );
+  } else {
+    setState(() {
+      _selectedIndex = index;
+    });
+    
+    // Update WebViewService with the new active controller
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        final controller = _controllerManager.getController(index, '', context);
+        WebViewService().updateController(controller, context);
+      }
+    });
   }
+}
 
-  @override
-  void dispose() {
-    // Clean up when disposing
-    _controllerManager.clearControllers();
-    super.dispose();
-  }
+@override
+void dispose() {
+  // Clear WebViewService controller reference
+  WebViewService().clearCurrentController();
+  
+  // Clean up when disposing
+  _controllerManager.clearControllers();
+  
+  super.dispose();
+}
 }

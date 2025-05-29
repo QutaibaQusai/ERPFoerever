@@ -1282,7 +1282,6 @@ Widget build(BuildContext context) {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
           Container(
             margin: const EdgeInsets.only(top: 12),
             height: 5,
@@ -1293,12 +1292,10 @@ Widget build(BuildContext context) {
             ),
           ),
           
-          // Header with title, back button, and close button
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 16, 8, 16),
+            padding: const EdgeInsets.fromLTRB(10, 4, 8, 4),
             child: Row(
               children: [
-                // Back button
                 if (_canGoBack)
                   IconButton(
                     icon: Icon(
@@ -1334,7 +1331,7 @@ Widget build(BuildContext context) {
                     size: 24,
                   ),
                   onPressed: () {
-                    _clearControllerReference(); // ADD THIS LINE - Same as WebViewPage
+                    _clearControllerReference(); 
                     Navigator.pop(context);
                   },
                   tooltip: 'Close',

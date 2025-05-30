@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/webview_service.dart';
@@ -13,7 +14,6 @@ import 'package:ERPForever/pages/barcode_scanner_page.dart';
 import 'package:ERPForever/pages/login_page.dart';
 import 'package:ERPForever/services/alert_service.dart';
 
-
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -26,13 +26,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late ConfigService _configService;
   late WebViewControllerManager _controllerManager;
 
-final Map<int, bool> _loadingStates = {};
-final Map<int, bool> _isAtTopStates = {};
-final Map<int, bool> _isRefreshingStates = {};
-final Map<int, bool> _channelAdded = {};
-final Map<int, bool> _refreshChannelAdded = {};
-final Map<int, String> _refreshChannelNames = {};   
-
+  final Map<int, bool> _loadingStates = {};
+  final Map<int, bool> _isAtTopStates = {};
+  final Map<int, bool> _isRefreshingStates = {};
+  final Map<int, bool> _channelAdded = {};
+  final Map<int, bool> _refreshChannelAdded = {};
+  final Map<int, String> _refreshChannelNames = {};
 
   @override
   void initState() {
@@ -43,19 +42,20 @@ final Map<int, String> _refreshChannelNames = {};
     _initializeLoadingStates();
   }
 
-void _initializeLoadingStates() {
-  final config = _configService.config;
-  if (config != null) {
-    for (int i = 0; i < config.mainIcons.length; i++) {
-      _loadingStates[i] = true;
-      _isAtTopStates[i] = true; 
-      _isRefreshingStates[i] = false;
-      _channelAdded[i] = false;
-      _refreshChannelAdded[i] = false; // ADD THIS LINE
-      _refreshChannelNames[i] = 'MainScreenRefresh_${i}_${DateTime.now().millisecondsSinceEpoch}';
+  void _initializeLoadingStates() {
+    final config = _configService.config;
+    if (config != null) {
+      for (int i = 0; i < config.mainIcons.length; i++) {
+        _loadingStates[i] = true;
+        _isAtTopStates[i] = true;
+        _isRefreshingStates[i] = false;
+        _channelAdded[i] = false;
+        _refreshChannelAdded[i] = false; // ADD THIS LINE
+        _refreshChannelNames[i] =
+            'MainScreenRefresh_${i}_${DateTime.now().millisecondsSinceEpoch}';
+      }
     }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +147,7 @@ void _initializeLoadingStates() {
         onRefresh: () => _refreshWebView(index),
         // Custom condition: only allow refresh when webview is at top
         child: SingleChildScrollView(
-        physics:  const NeverScrollableScrollPhysics(),
+          physics: const NeverScrollableScrollPhysics(),
           child: SizedBox(
             height:
                 MediaQuery.of(context).size.height -
@@ -206,86 +206,92 @@ void _initializeLoadingStates() {
     }
   }
 
-Widget _buildWebView(int index, String url) {
-  final controller = _controllerManager.getController(index, url, context);
+  Widget _buildWebView(int index, String url) {
+    final controller = _controllerManager.getController(index, url, context);
 
+    // FIXED: Check if refresh channel is already added to prevent duplicate channel error
+    if (_refreshChannelAdded[index] != true) {
+      final refreshChannelName = _refreshChannelNames[index]!;
+      try {
+        controller.addJavaScriptChannel(
+          refreshChannelName,
+          onMessageReceived: (JavaScriptMessage message) {
+            if (message.message == 'refresh') {
+              debugPrint(
+                '🔄 Pull-to-refresh triggered from JavaScript for tab $index',
+              );
+              _handleJavaScriptRefresh(index);
+            }
+          },
+        );
+        _refreshChannelAdded[index] = true;
+        debugPrint(
+          '✅ Pull-to-refresh channel added for tab $index: $refreshChannelName',
+        );
+      } catch (e) {
+        debugPrint('❌ Error adding refresh channel for tab $index: $e');
+        _refreshChannelAdded[index] = false;
+      }
+    } else {
+      debugPrint(
+        '📍 Pull-to-refresh channel already added for tab $index, skipping...',
+      );
+    }
 
-  
-  // FIXED: Check if refresh channel is already added to prevent duplicate channel error
-  if (_refreshChannelAdded[index] != true) {
-    final refreshChannelName = _refreshChannelNames[index]!;
-    try {
-      controller.addJavaScriptChannel(
-        refreshChannelName,
-        onMessageReceived: (JavaScriptMessage message) {
-          if (message.message == 'refresh') {
-            debugPrint('🔄 Pull-to-refresh triggered from JavaScript for tab $index');
-            _handleJavaScriptRefresh(index);
+    controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (String url) {
+          debugPrint('🔄 Page started loading for tab $index: $url');
+          if (mounted) {
+            setState(() {
+              _loadingStates[index] = true;
+              _isAtTopStates[index] = true;
+            });
           }
         },
-      );
-      _refreshChannelAdded[index] = true;
-      debugPrint('✅ Pull-to-refresh channel added for tab $index: $refreshChannelName');
-    } catch (e) {
-      debugPrint('❌ Error adding refresh channel for tab $index: $e');
-      _refreshChannelAdded[index] = false;
-    }
-  } else {
-    debugPrint('📍 Pull-to-refresh channel already added for tab $index, skipping...');
+        onPageFinished: (String url) {
+          if (mounted) {
+            setState(() {
+              _loadingStates[index] = false;
+            });
+          }
+
+          _injectScrollMonitoring(controller, index);
+
+          // Add native pull-to-refresh after page loads
+          Future.delayed(const Duration(milliseconds: 800), () {
+            _injectNativePullToRefresh(controller, index);
+          });
+        },
+        onWebResourceError: (WebResourceError error) {
+          if (mounted) {
+            setState(() {
+              _loadingStates[index] = false;
+            });
+          }
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          // Update controller reference before handling navigation
+          WebViewService().updateController(controller, context);
+          return _handleNavigationRequest(request);
+        },
+      ),
+    );
+
+    return WebViewWidget(controller: controller);
   }
 
-  controller.setNavigationDelegate(
-    NavigationDelegate(
-      onPageStarted: (String url) {
-        debugPrint('🔄 Page started loading for tab $index: $url');
-        if (mounted) {
-          setState(() {
-            _loadingStates[index] = true;
-            _isAtTopStates[index] = true;
-          });
-        }
-      },
-      onPageFinished: (String url) {
-        if (mounted) {
-          setState(() {
-            _loadingStates[index] = false;
-          });
-        }
+  // FIXED: Inject native pull-to-refresh functionality (JavaScript only)
+  void _injectNativePullToRefresh(WebViewController controller, int index) {
+    try {
+      final refreshChannelName = _refreshChannelNames[index]!;
 
-        _injectScrollMonitoring(controller, index);
-        
-        // Add native pull-to-refresh after page loads
-        Future.delayed(const Duration(milliseconds: 800), () {
-          _injectNativePullToRefresh(controller, index);
-        });
-      },
-      onWebResourceError: (WebResourceError error) {
-        if (mounted) {
-          setState(() {
-            _loadingStates[index] = false;
-          });
-        }
-      },
-      onNavigationRequest: (NavigationRequest request) {
-        // Update controller reference before handling navigation
-        WebViewService().updateController(controller, context);
-        return _handleNavigationRequest(request);
-      },
-    ),
-  );
+      debugPrint(
+        '✅ Injecting pull-to-refresh JavaScript for tab $index: $refreshChannelName',
+      );
 
-  return WebViewWidget(controller: controller);
-}
-
-// FIXED: Inject native pull-to-refresh functionality (JavaScript only)
-void _injectNativePullToRefresh(WebViewController controller, int index) {
-  try {
-    final refreshChannelName = _refreshChannelNames[index]!;
-
-    debugPrint('✅ Injecting pull-to-refresh JavaScript for tab $index: $refreshChannelName');
-
-    // Inject native pull-to-refresh JavaScript (channel should already exist)
-    controller.runJavaScript('''
+      // Inject native pull-to-refresh JavaScript (channel should already exist)
+      controller.runJavaScript('''
       (function() {
         console.log('🔄 Initializing native pull-to-refresh for main screen tab $index...');
         
@@ -517,47 +523,47 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
       })();
     ''');
 
-    debugPrint('✅ Native pull-to-refresh JavaScript injected for tab $index');
-  } catch (e) {
-    debugPrint('❌ Error injecting pull-to-refresh for tab $index: $e');
-  }
-}
-
-// NEW: Handle refresh triggered from JavaScript
-// FIXED: Handle refresh triggered from JavaScript
-Future<void> _handleJavaScriptRefresh(int index) async {
-  debugPrint('🔄 Handling JavaScript refresh request for tab $index');
-  
-  if (_isRefreshingStates[index] == true) {
-    debugPrint('❌ Already refreshing tab $index, ignoring request');
-    return;
-  }
-  
-  try {
-    setState(() {
-      _isRefreshingStates[index] = true;
-      _loadingStates[index] = true; // ADD THIS LINE - Show loading indicator
-    });
-    
-    final controller = _controllerManager.getController(index, '', context);
-    await controller.reload();
-    
-    // Wait for page to start loading
-    await Future.delayed(const Duration(milliseconds: 800));
-    
-    debugPrint('✅ JavaScript refresh completed successfully for tab $index');
-  } catch (e) {
-    debugPrint('❌ Error during JavaScript refresh for tab $index: $e');
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isRefreshingStates[index] = false;
-        // Note: Don't set _loadingStates[index] = false here
-        // Let the onPageFinished callback handle it
-      });
+      debugPrint('✅ Native pull-to-refresh JavaScript injected for tab $index');
+    } catch (e) {
+      debugPrint('❌ Error injecting pull-to-refresh for tab $index: $e');
     }
   }
-}
+
+  // NEW: Handle refresh triggered from JavaScript
+  // FIXED: Handle refresh triggered from JavaScript
+  Future<void> _handleJavaScriptRefresh(int index) async {
+    debugPrint('🔄 Handling JavaScript refresh request for tab $index');
+
+    if (_isRefreshingStates[index] == true) {
+      debugPrint('❌ Already refreshing tab $index, ignoring request');
+      return;
+    }
+
+    try {
+      setState(() {
+        _isRefreshingStates[index] = true;
+        _loadingStates[index] = true; // ADD THIS LINE - Show loading indicator
+      });
+
+      final controller = _controllerManager.getController(index, '', context);
+      await controller.reload();
+
+      // Wait for page to start loading
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      debugPrint('✅ JavaScript refresh completed successfully for tab $index');
+    } catch (e) {
+      debugPrint('❌ Error during JavaScript refresh for tab $index: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshingStates[index] = false;
+          // Note: Don't set _loadingStates[index] = false here
+          // Let the onPageFinished callback handle it
+        });
+      }
+    }
+  }
 
   void _injectScrollMonitoring(WebViewController controller, int index) {
     // FIXED: Check if channel is already added to prevent duplicate channel error
@@ -640,206 +646,236 @@ Future<void> _handleJavaScriptRefresh(int index) async {
       _channelAdded[index] = false;
     }
   }
-NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-  debugPrint("Navigation request: ${request.url}");
 
-  // NEW: Handle external URLs with ?external=1 parameter
-  if (request.url.contains('?external=1')) {
-    _handleExternalNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
+  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+    debugPrint("Navigation request: ${request.url}");
 
-  // Theme requests
-  if (request.url.startsWith('dark-mode://') ||
-      request.url.startsWith('light-mode://') ||
-      request.url.startsWith('system-mode://')) {
-    _handleThemeChangeRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // Auth requests
-  if (request.url.startsWith('logout://')) {
-    _handleLogoutRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Location requests
-  if (request.url.startsWith('get-location://')) {
-    _handleLocationRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Contacts requests
-  if (request.url.startsWith('get-contacts://')) {
-    _handleContactsRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Other navigation requests
-  if (request.url.startsWith('new-web://')) {
-    _handleNewWebNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('new-sheet://')) {
-    _handleSheetNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // Barcode requests
-  if (request.url.contains('barcode') || request.url.contains('scan')) {
-    _handleBarcodeScanning(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('take-screenshot://')) {
-    _handleScreenshotRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Image save requests
-  if (request.url.startsWith('save-image://')) {
-    _handleImageSaveRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('save-pdf://')) {
-    _handlePdfSaveRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('alert://') || 
-      request.url.startsWith('confirm://') || 
-      request.url.startsWith('prompt://')) {
-    _handleAlertRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  return NavigationDecision.navigate;
-}
-void _handleExternalNavigation(String url) {
-  debugPrint('🌐 External navigation detected: $url');
-  
-  try {
-    // Remove the ?external=1 parameter to get the clean URL
-    String cleanUrl = url.replaceAll('?external=1', '');
-    
-    // Also handle case where there are other parameters after external=1
-    cleanUrl = cleanUrl.replaceAll('&external=1', '');
-    cleanUrl = cleanUrl.replaceAll('external=1&', '');
-    cleanUrl = cleanUrl.replaceAll('external=1', '');
-    
-    // Clean up any leftover ? or & at the end
-    if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
-      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+    // NEW: Handle external URLs with ?external=1 parameter
+    if (request.url.contains('?external=1')) {
+      _handleExternalNavigation(request.url);
+      return NavigationDecision.prevent;
     }
-    
-    debugPrint('🔗 Clean URL for external navigation: $cleanUrl');
-    
-    // Validate URL
-    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
-      debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
-      _showUrlError('Invalid URL format');
-      return;
+
+    // Theme requests
+    if (request.url.startsWith('dark-mode://') ||
+        request.url.startsWith('light-mode://') ||
+        request.url.startsWith('system-mode://')) {
+      _handleThemeChangeRequest(request.url);
+      return NavigationDecision.prevent;
     }
-    
-    // Determine the link type based on your preference
-    // You can change this to 'regular_webview' if you prefer
-    String linkType = 'regular_webview'; // or 'regular_webview'
-    
-    // Extract domain for title
-    String title = 'Web View';
+
+    // Auth requests
+    if (request.url.startsWith('logout://')) {
+      _handleLogoutRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Location requests
+    if (request.url.startsWith('get-location://')) {
+      _handleLocationRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Contacts requests
+    if (request.url.startsWith('get-contacts://')) {
+      _handleContactsRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Other navigation requests
+    if (request.url.startsWith('new-web://')) {
+      _handleNewWebNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('new-sheet://')) {
+      _handleSheetNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // Barcode requests
+    if (request.url.contains('barcode') || request.url.contains('scan')) {
+      _handleBarcodeScanning(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('take-screenshot://')) {
+      _handleScreenshotRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Image save requests
+    if (request.url.startsWith('save-image://')) {
+      _handleImageSaveRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('save-pdf://')) {
+      _handlePdfSaveRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('alert://') ||
+        request.url.startsWith('confirm://') ||
+        request.url.startsWith('prompt://')) {
+      _handleAlertRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    return NavigationDecision.navigate;
+  }
+
+  void _handleExternalNavigation(String url) {
+    debugPrint('🌐 External navigation detected in MainScreen: $url');
+
     try {
-      Uri uri = Uri.parse(cleanUrl);
-      title = uri.host.isNotEmpty ? uri.host : 'Web View';
-      // Remove www. prefix for cleaner title
-      if (title.startsWith('www.')) {
-        title = title.substring(4);
+      // Remove the ?external=1 parameter to get the clean URL
+      String cleanUrl = url.replaceAll('?external=1', '');
+
+      // Also handle case where there are other parameters after external=1
+      cleanUrl = cleanUrl.replaceAll('&external=1', '');
+      cleanUrl = cleanUrl.replaceAll('external=1&', '');
+      cleanUrl = cleanUrl.replaceAll('external=1', '');
+
+      // Clean up any leftover ? or & at the end
+      if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
+        cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+      }
+
+      debugPrint('🔗 Clean URL for external browser: $cleanUrl');
+
+      // Validate URL
+      if (cleanUrl.isEmpty ||
+          (!cleanUrl.startsWith('http://') &&
+              !cleanUrl.startsWith('https://'))) {
+        debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
+        _showUrlError('Invalid URL format');
+        return;
+      }
+
+      // Launch in default browser
+      _launchInDefaultBrowser(cleanUrl);
+    } catch (e) {
+      debugPrint('❌ Error handling external navigation: $e');
+      _showUrlError('Failed to open external URL');
+    }
+  }
+
+  Future<void> _launchInDefaultBrowser(String url) async {
+    try {
+      debugPrint('🌐 Opening URL in default browser: $url');
+
+      final Uri uri = Uri.parse(url);
+
+      // Check if the URL can be launched
+      if (await canLaunchUrl(uri)) {
+        // Launch in external browser (not in-app)
+        final bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication, // Force external browser
+        );
+
+        if (launched) {
+          debugPrint('✅ Successfully opened URL in default browser');
+
+          // Show success feedback
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Opening in browser...'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else {
+          debugPrint('❌ Failed to launch URL in browser');
+          _showUrlError('Could not open URL in browser');
+        }
+      } else {
+        debugPrint('❌ Cannot launch URL: $url');
+        _showUrlError('Cannot open this type of URL');
       }
     } catch (e) {
-      debugPrint('Error parsing URL for title: $e');
+      debugPrint('❌ Error launching URL in browser: $e');
+      _showUrlError('Failed to open browser: ${e.toString()}');
     }
-    
-    // Navigate using WebViewService
-    WebViewService().navigate(
-      context,
-      url: cleanUrl,
-      linkType: linkType,
-      title: title,
-    );
-    
-    debugPrint('✅ Successfully opened external URL: $cleanUrl');
-    
-  } catch (e) {
-    debugPrint('❌ Error handling external navigation: $e');
-    _showUrlError('Failed to open external URL');
   }
-}
 
-// NEW: Add this helper method to show URL errors
-void _showUrlError(String message) {
-  if (mounted) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  // NEW: Add this helper method to show URL errors
+  void _showUrlError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
-}
+
   void _handleAlertRequest(String url) async {
-  debugPrint('🚨 Alert request received in main screen: $url');
-  
-  try {
-    Map<String, dynamic> result;
-    String alertType = AlertService().getAlertType(url);
-    
-    switch (alertType) {
-      case 'alert':
-        result = await AlertService().showAlertFromUrl(url, context);
-        break;
-      case 'confirm':
-        result = await AlertService().showConfirmFromUrl(url, context);
-        break;
-      case 'prompt':
-        result = await AlertService().showPromptFromUrl(url, context);
-        break;
-      default:
-        result = await AlertService().showAlertFromUrl(url, context);
-        break;
+    debugPrint('🚨 Alert request received in main screen: $url');
+
+    try {
+      Map<String, dynamic> result;
+      String alertType = AlertService().getAlertType(url);
+
+      switch (alertType) {
+        case 'alert':
+          result = await AlertService().showAlertFromUrl(url, context);
+          break;
+        case 'confirm':
+          result = await AlertService().showConfirmFromUrl(url, context);
+          break;
+        case 'prompt':
+          result = await AlertService().showPromptFromUrl(url, context);
+          break;
+        default:
+          result = await AlertService().showAlertFromUrl(url, context);
+          break;
+      }
+
+      // Send result back to WebView
+      _sendAlertResultToCurrentWebView(result, alertType);
+    } catch (e) {
+      debugPrint('❌ Error handling alert in main screen: $e');
+
+      _sendAlertResultToCurrentWebView({
+        'success': false,
+        'error': 'Failed to handle alert: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+      }, 'alert');
     }
-
-    // Send result back to WebView
-    _sendAlertResultToCurrentWebView(result, alertType);
-
-  } catch (e) {
-    debugPrint('❌ Error handling alert in main screen: $e');
-    
-    _sendAlertResultToCurrentWebView({
-      'success': false,
-      'error': 'Failed to handle alert: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR'
-    }, 'alert');
   }
-}
-// Add this method to send alert results to the current WebView:
-void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertType) {
-  final controller = _controllerManager.getController(_selectedIndex, '', context);
 
-  final success = result['success'] ?? false;
-  final error = (result['error'] ?? '').replaceAll('"', '\\"');
-  final errorCode = result['errorCode'] ?? '';
-  final message = (result['message'] ?? '').replaceAll('"', '\\"');
-  final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
-  final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
-  final confirmed = result['confirmed'] ?? false;
-  final cancelled = result['cancelled'] ?? false;
-  final dismissed = result['dismissed'] ?? false;
+  // Add this method to send alert results to the current WebView:
+  void _sendAlertResultToCurrentWebView(
+    Map<String, dynamic> result,
+    String alertType,
+  ) {
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  controller.runJavaScript('''
+    final success = result['success'] ?? false;
+    final error = (result['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = result['errorCode'] ?? '';
+    final message = (result['message'] ?? '').replaceAll('"', '\\"');
+    final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
+    final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
+    final confirmed = result['confirmed'] ?? false;
+    final cancelled = result['cancelled'] ?? false;
+    final dismissed = result['dismissed'] ?? false;
+
+    controller.runJavaScript('''
     try {
       console.log("🚨 Alert result from main screen: Type=$alertType, Success=$success");
       
@@ -874,17 +910,18 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
       console.error("❌ Error handling alert result:", error);
     }
   ''');
-}
+  }
+
   void _handlePdfSaveRequest(String url) {
-  debugPrint('📄 PDF save requested from WebView: $url');
+    debugPrint('📄 PDF save requested from WebView: $url');
 
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     if (window.PdfSaver && window.PdfSaver.postMessage) {
       window.PdfSaver.postMessage("$url");
       console.log("✅ PDF save request sent");
@@ -892,17 +929,18 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
       console.log("❌ PdfSaver not found");
     }
   ''');
-}
+  }
+
   void _handleImageSaveRequest(String url) {
-  debugPrint('🖼️ Image save requested from WebView: $url');
+    debugPrint('🖼️ Image save requested from WebView: $url');
 
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     if (window.ImageSaver && window.ImageSaver.postMessage) {
       window.ImageSaver.postMessage("$url");
       console.log("✅ Image save request sent");
@@ -910,17 +948,18 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
       console.log("❌ ImageSaver not found");
     }
   ''');
-}
+  }
+
   void _handleScreenshotRequest() {
-  debugPrint('📸 Screenshot requested from WebView');
+    debugPrint('📸 Screenshot requested from WebView');
 
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     if (window.ScreenshotManager && window.ScreenshotManager.postMessage) {
       window.ScreenshotManager.postMessage('takeScreenshot');
       console.log("✅ Screenshot request sent");
@@ -928,7 +967,7 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
       console.log("❌ ScreenshotManager not found");
     }
   ''');
-}
+  }
 
   void _handleContactsRequest() {
     debugPrint('📞 Contacts requested from WebView');
@@ -1129,42 +1168,46 @@ void _sendAlertResultToCurrentWebView(Map<String, dynamic> result, String alertT
     ''');
   }
 
-void _onItemTapped(int index) {
-  final config = _configService.config;
-  if (config == null) return;
+  void _onItemTapped(int index) {
+    final config = _configService.config;
+    if (config == null) return;
 
-  final item = config.mainIcons[index];
+    final item = config.mainIcons[index];
 
-  if (item.linkType == 'sheet_webview') {
-    WebViewService().navigate(
-      context,
-      url: item.link,
-      linkType: item.linkType,
-      title: item.title,
-    );
-  } else {
-    setState(() {
-      _selectedIndex = index;
-    });
-    
-    // Update WebViewService with the new active controller
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        final controller = _controllerManager.getController(index, '', context);
-        WebViewService().updateController(controller, context);
-      }
-    });
+    if (item.linkType == 'sheet_webview') {
+      WebViewService().navigate(
+        context,
+        url: item.link,
+        linkType: item.linkType,
+        title: item.title,
+      );
+    } else {
+      setState(() {
+        _selectedIndex = index;
+      });
+
+      // Update WebViewService with the new active controller
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          final controller = _controllerManager.getController(
+            index,
+            '',
+            context,
+          );
+          WebViewService().updateController(controller, context);
+        }
+      });
+    }
   }
-}
 
-@override
-void dispose() {
-  // Clear WebViewService controller reference
-  WebViewService().clearCurrentController();
-  
-  // Clean up when disposing
-  _controllerManager.clearControllers();
-  
-  super.dispose();
-}
+  @override
+  void dispose() {
+    // Clear WebViewService controller reference
+    WebViewService().clearCurrentController();
+
+    // Clean up when disposing
+    _controllerManager.clearControllers();
+
+    super.dispose();
+  }
 }

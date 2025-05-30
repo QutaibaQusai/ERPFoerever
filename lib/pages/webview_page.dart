@@ -1,6 +1,7 @@
 // lib/pages/webview_page.dart - Working navigation + All services
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:ERPForever/services/webview_service.dart';
 import 'package:ERPForever/widgets/loading_widget.dart';
@@ -22,11 +23,9 @@ class _WebViewPageState extends State<WebViewPage> {
   bool _isAtTop = true;
   final String _channelName =
       'RegularWebViewScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
-      final String _refreshChannelName =
-    'PullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
-      late String _pageId; // ADD THIS LINE
-
-    
+  final String _refreshChannelName =
+      'PullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
+  late String _pageId; // ADD THIS LINE
 
   @override
   void initState() {
@@ -34,103 +33,99 @@ class _WebViewPageState extends State<WebViewPage> {
     _initializeWebView();
   }
 
-void _initializeWebView() {
-  // Create controller using WebViewService to get all JavaScript bridges
-  _controller = WebViewService().createController(widget.url, context);
+  void _initializeWebView() {
+    // Create controller using WebViewService to get all JavaScript bridges
+    _controller = WebViewService().createController(widget.url, context);
 
-  // CRITICAL: Register this controller with WebViewService
-final pageId = 'WebViewPage_${widget.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
-WebViewService().pushController(_controller, context, pageId);
+    // CRITICAL: Register this controller with WebViewService
+    final pageId =
+        'WebViewPage_${widget.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
+    WebViewService().pushController(_controller, context, pageId);
 
-// Store the page ID for cleanup
-_pageId = pageId;
+    // Store the page ID for cleanup
+    _pageId = pageId;
 
-debugPrint('📋 WebViewPage controller pushed to stack with ID: $pageId');
-  // Add JavaScript channel for scroll monitoring
-  _controller.addJavaScriptChannel(
-    _channelName,
-    onMessageReceived: (JavaScriptMessage message) {
-      try {
-        final isAtTop = message.message == 'true';
+    debugPrint('📋 WebViewPage controller pushed to stack with ID: $pageId');
+    // Add JavaScript channel for scroll monitoring
+    _controller.addJavaScriptChannel(
+      _channelName,
+      onMessageReceived: (JavaScriptMessage message) {
+        try {
+          final isAtTop = message.message == 'true';
 
-        if (mounted && _isAtTop != isAtTop) {
-          setState(() {
-            _isAtTop = isAtTop;
-          });
-          debugPrint(
-            'Regular WebView scroll: ${isAtTop ? "TOP" : "SCROLLED"}',
-          );
-        }
-      } catch (e) {
-        debugPrint('Error parsing scroll message: $e');
-      }
-    },
-  );
-
-  // Add JavaScript channel for pull-to-refresh
-  _controller.addJavaScriptChannel(
-    _refreshChannelName,
-    onMessageReceived: (JavaScriptMessage message) {
-      if (message.message == 'refresh') {
-        debugPrint('🔄 Pull-to-refresh triggered from JavaScript');
-        _handleJavaScriptRefresh();
-      }
-    },
-  );
-
-  // IMPORTANT: Override the navigation delegate to handle new-web:// properly
-  _controller.setNavigationDelegate(
-    NavigationDelegate(
-      onPageStarted: (String url) {
-        debugPrint('⏳ Page started loading: $url');
-        if (mounted) {
-          setState(() {
-            _isLoading = true;
-          });
+          if (mounted && _isAtTop != isAtTop) {
+            setState(() {
+              _isAtTop = isAtTop;
+            });
+            debugPrint(
+              'Regular WebView scroll: ${isAtTop ? "TOP" : "SCROLLED"}',
+            );
+          }
+        } catch (e) {
+          debugPrint('Error parsing scroll message: $e');
         }
       },
-      onPageFinished: (String url) {
+    );
 
-
-        debugPrint('✅ Page finished loading: $url');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-
-
-
-        // CRITICAL: Re-inject all WebViewService JavaScript after page loads
-        _reinjectWebViewServiceJS();
-
-        // Then inject scroll monitoring
-        Future.delayed(const Duration(milliseconds: 500), () {
-          _injectScrollMonitoring();
-        });
-        _injectPullToRefresh();
-      },
-      onNavigationRequest: (NavigationRequest request) {
-        debugPrint('🔍 WebViewPage Navigation request: ${request.url}');
-        
-
-        
-        return _handleNavigationRequest(request);
-      },
-      onWebResourceError: (WebResourceError error) {
-        debugPrint('❌ Web resource error: ${error.description}');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
+    // Add JavaScript channel for pull-to-refresh
+    _controller.addJavaScriptChannel(
+      _refreshChannelName,
+      onMessageReceived: (JavaScriptMessage message) {
+        if (message.message == 'refresh') {
+          debugPrint('🔄 Pull-to-refresh triggered from JavaScript');
+          _handleJavaScriptRefresh();
         }
       },
-    ),
-  );
-}
+    );
+
+    // IMPORTANT: Override the navigation delegate to handle new-web:// properly
+    _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (String url) {
+          debugPrint('⏳ Page started loading: $url');
+          if (mounted) {
+            setState(() {
+              _isLoading = true;
+            });
+          }
+        },
+        onPageFinished: (String url) {
+          debugPrint('✅ Page finished loading: $url');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+
+          // CRITICAL: Re-inject all WebViewService JavaScript after page loads
+          _reinjectWebViewServiceJS();
+
+          // Then inject scroll monitoring
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _injectScrollMonitoring();
+          });
+          _injectPullToRefresh();
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          debugPrint('🔍 WebViewPage Navigation request: ${request.url}');
+
+          return _handleNavigationRequest(request);
+        },
+        onWebResourceError: (WebResourceError error) {
+          debugPrint('❌ Web resource error: ${error.description}');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        },
+      ),
+    );
+  }
+
   // Inject native JavaScript pull-to-refresh functionality
-void _injectPullToRefresh() {
-  _controller.runJavaScript('''
+  void _injectPullToRefresh() {
+    _controller.runJavaScript('''
     (function() {
       console.log('🔄 Initializing native pull-to-refresh...');
       
@@ -336,23 +331,24 @@ void _injectPullToRefresh() {
       
     })();
   ''');
-}
-// Handle refresh triggered from JavaScript
-Future<void> _handleJavaScriptRefresh() async {
-  debugPrint('🔄 Handling JavaScript refresh request');
-  
-  try {
-    await _controller.reload();
-    debugPrint('✅ JavaScript refresh completed successfully');
-  } catch (e) {
-    debugPrint('❌ Error during JavaScript refresh: $e');
   }
-}
 
-void _reinjectWebViewServiceJS() {
-  debugPrint('💉 Re-injecting WebViewService JavaScript...');
+  // Handle refresh triggered from JavaScript
+  Future<void> _handleJavaScriptRefresh() async {
+    debugPrint('🔄 Handling JavaScript refresh request');
 
-  _controller.runJavaScript('''
+    try {
+      await _controller.reload();
+      debugPrint('✅ JavaScript refresh completed successfully');
+    } catch (e) {
+      debugPrint('❌ Error during JavaScript refresh: $e');
+    }
+  }
+
+  void _reinjectWebViewServiceJS() {
+    debugPrint('💉 Re-injecting WebViewService JavaScript...');
+
+    _controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading...");
     
     // Enhanced click handler with FIXED barcode detection for WebViewPage
@@ -776,125 +772,153 @@ void _reinjectWebViewServiceJS() {
     console.log("  - attribute detection: data-scan-type, data-continuous, .continuous-scan");
     console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
   ''');
-}
-
-NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-  debugPrint('🔍 Handling navigation in WebViewPage: ${request.url}');
-
-  // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
-  if (request.url.contains('?external=1')) {
-    _handleExternalNavigation(request.url);
-    return NavigationDecision.prevent;
   }
 
-  // Handle new-web:// requests - PREVENT and open new WebView layer
-  if (request.url.startsWith('new-web://')) {
-    _handleNewWebNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
+  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+    debugPrint('🔍 Handling navigation in WebViewPage: ${request.url}');
 
-  // Handle new-sheet:// requests
-  if (request.url.startsWith('new-sheet://')) {
-    _handleSheetNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // For loggedin:// requests, also prevent to avoid issues
-  if (request.url.startsWith('loggedin://')) {
-    debugPrint('🔐 Login success detected in WebViewPage - but user is already logged in');
-    return NavigationDecision.prevent;
-  }
-
-  // For all service-related URLs, prevent navigation (they'll be handled by JavaScript)
-  if (request.url.startsWith('dark-mode://') ||
-      request.url.startsWith('light-mode://') ||
-      request.url.startsWith('system-mode://') ||
-      request.url.startsWith('logout://') ||
-      request.url.startsWith('get-location://') ||
-      request.url.startsWith('get-contacts://') ||
-      request.url.startsWith('take-screenshot://') ||
-      request.url.startsWith('save-image://') ||
-      request.url.startsWith('save-pdf://') ||
-      request.url.startsWith('alert://') ||
-      request.url.startsWith('confirm://') ||
-      request.url.startsWith('prompt://') ||
-      request.url.contains('barcode') ||
-      request.url.contains('scan')) {
-    // These will be handled by the re-injected JavaScript
-    return NavigationDecision.prevent;
-  }
-
-  // Allow normal navigation for other URLs
-  return NavigationDecision.navigate;
-}
-
-void _handleExternalNavigation(String url) {
-  debugPrint('🌐 External navigation detected in WebViewPage: $url');
-  
-  try {
-    // Remove the ?external=1 parameter to get the clean URL
-    String cleanUrl = url.replaceAll('?external=1', '');
-    
-    // Also handle case where there are other parameters after external=1
-    cleanUrl = cleanUrl.replaceAll('&external=1', '');
-    cleanUrl = cleanUrl.replaceAll('external=1&', '');
-    cleanUrl = cleanUrl.replaceAll('external=1', '');
-    
-    // Clean up any leftover ? or & at the end
-    if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
-      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+    // PRIORITY: Handle external URLs with ?external=1 parameter - ADD THIS
+    if (request.url.contains('?external=1')) {
+      _handleExternalNavigation(request.url);
+      return NavigationDecision.prevent;
     }
-    
-    debugPrint('🔗 Clean URL for external navigation: $cleanUrl');
-    
-    // Validate URL
-    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
-      debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
-      _showUrlError('Invalid URL format');
-      return;
+
+    // Handle new-web:// requests - PREVENT and open new WebView layer
+    if (request.url.startsWith('new-web://')) {
+      _handleNewWebNavigation(request.url);
+      return NavigationDecision.prevent;
     }
-    
-    // Extract domain for title
-    String title = 'Web View';
+
+    // Handle new-sheet:// requests
+    if (request.url.startsWith('new-sheet://')) {
+      _handleSheetNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // For loggedin:// requests, also prevent to avoid issues
+    if (request.url.startsWith('loggedin://')) {
+      debugPrint(
+        '🔐 Login success detected in WebViewPage - but user is already logged in',
+      );
+      return NavigationDecision.prevent;
+    }
+
+    // For all service-related URLs, prevent navigation (they'll be handled by JavaScript)
+    if (request.url.startsWith('dark-mode://') ||
+        request.url.startsWith('light-mode://') ||
+        request.url.startsWith('system-mode://') ||
+        request.url.startsWith('logout://') ||
+        request.url.startsWith('get-location://') ||
+        request.url.startsWith('get-contacts://') ||
+        request.url.startsWith('take-screenshot://') ||
+        request.url.startsWith('save-image://') ||
+        request.url.startsWith('save-pdf://') ||
+        request.url.startsWith('alert://') ||
+        request.url.startsWith('confirm://') ||
+        request.url.startsWith('prompt://') ||
+        request.url.contains('barcode') ||
+        request.url.contains('scan')) {
+      // These will be handled by the re-injected JavaScript
+      return NavigationDecision.prevent;
+    }
+
+    // Allow normal navigation for other URLs
+    return NavigationDecision.navigate;
+  }
+
+  void _handleExternalNavigation(String url) {
+    debugPrint('🌐 External navigation detected in WebViewPage: $url');
+
     try {
-      Uri uri = Uri.parse(cleanUrl);
-      title = uri.host.isNotEmpty ? uri.host : 'Web View';
-      // Remove www. prefix for cleaner title
-      if (title.startsWith('www.')) {
-        title = title.substring(4);
+      // Remove the ?external=1 parameter to get the clean URL
+      String cleanUrl = url.replaceAll('?external=1', '');
+
+      // Also handle case where there are other parameters after external=1
+      cleanUrl = cleanUrl.replaceAll('&external=1', '');
+      cleanUrl = cleanUrl.replaceAll('external=1&', '');
+      cleanUrl = cleanUrl.replaceAll('external=1', '');
+
+      // Clean up any leftover ? or & at the end
+      if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
+        cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+      }
+
+      debugPrint('🔗 Clean URL for external browser: $cleanUrl');
+
+      // Validate URL
+      if (cleanUrl.isEmpty ||
+          (!cleanUrl.startsWith('http://') &&
+              !cleanUrl.startsWith('https://'))) {
+        debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
+        _showUrlError('Invalid URL format');
+        return;
+      }
+
+      // Launch in default browser
+      _launchInDefaultBrowser(cleanUrl);
+    } catch (e) {
+      debugPrint('❌ Error handling external navigation: $e');
+      _showUrlError('Failed to open external URL');
+    }
+  }
+
+  // Add this new method to WebViewPage
+  Future<void> _launchInDefaultBrowser(String url) async {
+    try {
+      debugPrint('🌐 Opening URL in default browser: $url');
+
+      final Uri uri = Uri.parse(url);
+
+      // Check if the URL can be launched
+      if (await canLaunchUrl(uri)) {
+        // Launch in external browser (not in-app)
+        final bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication, // Force external browser
+        );
+
+        if (launched) {
+          debugPrint('✅ Successfully opened URL in default browser');
+
+          // Show success feedback
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Opening in browser...'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else {
+          debugPrint('❌ Failed to launch URL in browser');
+          _showUrlError('Could not open URL in browser');
+        }
+      } else {
+        debugPrint('❌ Cannot launch URL: $url');
+        _showUrlError('Cannot open this type of URL');
       }
     } catch (e) {
-      debugPrint('Error parsing URL for title: $e');
+      debugPrint('❌ Error launching URL in browser: $e');
+      _showUrlError('Failed to open browser: ${e.toString()}');
     }
-    
-    // Navigate using WebViewService (creates another layer)
-    WebViewService().navigate(
-      context,
-      url: cleanUrl,
-      linkType: 'regular_webview', // or 'sheet_webview' based on preference
-      title: title,
-    );
-    
-    debugPrint('✅ Successfully opened external URL: $cleanUrl');
-    
-  } catch (e) {
-    debugPrint('❌ Error handling external navigation: $e');
-    _showUrlError('Failed to open external URL');
   }
-}
-void _showUrlError(String message) {
-  if (mounted) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+
+  void _showUrlError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
-}
 
   // Handle new-web:// navigation by opening another WebViewPage
   void _handleNewWebNavigation(String url) {
@@ -914,20 +938,20 @@ void _showUrlError(String message) {
     }
 
     // Navigate to another WebViewPage (creating a layer)
-   // Navigate to another WebViewPage (creating a layer)
-Navigator.push(
-  context,
-  MaterialPageRoute(
-    builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
-  ),
-).then((_) {
-  // When returning from the new WebViewPage, re-register this controller
-  if (mounted && context.mounted) {
-    Future.delayed(const Duration(milliseconds: 100), () {
-      WebViewService().pushController(_controller, context, _pageId);
+    // Navigate to another WebViewPage (creating a layer)
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
+      ),
+    ).then((_) {
+      // When returning from the new WebViewPage, re-register this controller
+      if (mounted && context.mounted) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          WebViewService().pushController(_controller, context, _pageId);
+        });
+      }
     });
-  }
-});
   }
 
   // Handle new-sheet:// navigation - Open CURRENT page in sheet
@@ -1014,7 +1038,6 @@ Navigator.push(
     ''');
   }
 
- 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -1037,33 +1060,34 @@ Navigator.push(
         backgroundColor: isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
         elevation: 0,
       ),
-body: _buildWebViewContent(isDarkMode),    );
+      body: _buildWebViewContent(isDarkMode),
+    );
   }
 
- Widget _buildWebViewContent(bool isDarkMode) {
-  return SizedBox(
-    height: MediaQuery.of(context).size.height -
-        kToolbarHeight -
-        MediaQuery.of(context).padding.top,
-    child: Stack(
-      children: [
-        WebViewWidget(controller: _controller),
-        if (_isLoading)
-          LoadingWidget(
-            message: "Loading...",
-          ),
-      ],
-    ),
-  );
-}
+  Widget _buildWebViewContent(bool isDarkMode) {
+    return SizedBox(
+      height:
+          MediaQuery.of(context).size.height -
+          kToolbarHeight -
+          MediaQuery.of(context).padding.top,
+      child: Stack(
+        children: [
+          WebViewWidget(controller: _controller),
+          if (_isLoading) LoadingWidget(message: "Loading..."),
+        ],
+      ),
+    );
+  }
 
-@override
-void dispose() {
-  debugPrint('🧹 WebViewPage disposing - popping controller from stack: $_pageId');
-  
-  // Pop this specific controller from the stack
-  WebViewService().popController(_pageId);
-  
-  super.dispose();
-}
+  @override
+  void dispose() {
+    debugPrint(
+      '🧹 WebViewPage disposing - popping controller from stack: $_pageId',
+    );
+
+    // Pop this specific controller from the stack
+    WebViewService().popController(_pageId);
+
+    super.dispose();
+  }
 }

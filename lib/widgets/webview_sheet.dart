@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:ERPForever/pages/webview_page.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/foundation.dart';
@@ -29,8 +30,10 @@ class _WebViewSheetState extends State<WebViewSheet> {
   bool _canGoBack = false;
   bool _isAtTop = true;
   Timer? _loadingTimer;
-  final String _channelName = 'SheetScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
-  final String _refreshChannelName = 'SheetPullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
+  final String _channelName =
+      'SheetScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
+  final String _refreshChannelName =
+      'SheetPullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
   late String _pageId; // ADD THIS LINE - Same as WebViewPage
 
   @override
@@ -39,290 +42,320 @@ class _WebViewSheetState extends State<WebViewSheet> {
     _initializeWebView();
   }
 
-void _initializeWebView() {
-  // Use WebViewService.createController() to get all JavaScript bridges
-  _controller = WebViewService().createController(widget.url, context);
+  void _initializeWebView() {
+    // Use WebViewService.createController() to get all JavaScript bridges
+    _controller = WebViewService().createController(widget.url, context);
 
-  // CRITICAL: Register this controller with WebViewService - SAME AS WebViewPage
-  final pageId = 'WebViewSheet_${widget.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
-  WebViewService().pushController(_controller, context, pageId);
+    // CRITICAL: Register this controller with WebViewService - SAME AS WebViewPage
+    final pageId =
+        'WebViewSheet_${widget.hashCode}_${DateTime.now().millisecondsSinceEpoch}';
+    WebViewService().pushController(_controller, context, pageId);
 
-  // Store the page ID for cleanup - SAME AS WebViewPage
-  _pageId = pageId;
+    // Store the page ID for cleanup - SAME AS WebViewPage
+    _pageId = pageId;
 
-  debugPrint('📋 WebViewSheet controller pushed to stack with ID: $pageId');
+    debugPrint('📋 WebViewSheet controller pushed to stack with ID: $pageId');
 
-  // Add JavaScript channel for scroll monitoring
-  _controller.addJavaScriptChannel(
-    _channelName,
-    onMessageReceived: (JavaScriptMessage message) {
-      try {
-        final isAtTop = message.message == 'true';
-        
-        if (mounted && _isAtTop != isAtTop) {
-          setState(() {
-            _isAtTop = isAtTop;
-          });
-          debugPrint('📍 Sheet scroll position: ${isAtTop ? "TOP" : "SCROLLED"}');
-        }
-      } catch (e) {
-        debugPrint('❌ Error parsing scroll message: $e');
-      }
-    },
-  );
+    // Add JavaScript channel for scroll monitoring
+    _controller.addJavaScriptChannel(
+      _channelName,
+      onMessageReceived: (JavaScriptMessage message) {
+        try {
+          final isAtTop = message.message == 'true';
 
-  // Add JavaScript channel for pull-to-refresh
-  _controller.addJavaScriptChannel(
-    _refreshChannelName,
-    onMessageReceived: (JavaScriptMessage message) {
-      if (message.message == 'refresh') {
-        debugPrint('🔄 Pull-to-refresh triggered from JavaScript in sheet');
-        _handleJavaScriptRefresh();
-      }
-    },
-  );
-
-  // Set proper navigation delegate to handle page reloads
-  _controller.setNavigationDelegate(
-    NavigationDelegate(
-      onPageStarted: (String url) {
-        debugPrint('⏳ Sheet page started loading: $url');
-        if (mounted) {
-          setState(() {
-            _isLoading = true;
-          });
-        }
-      },
-      onPageFinished: (String url) {
-        debugPrint('✅ Sheet page finished loading: $url');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-        
-        // CRITICAL: Re-inject all WebViewService JavaScript after page loads - SAME AS WebViewPage
-        _reinjectWebViewServiceJS();
-
-        // Enhanced page setup for sheets
-        _setupSheetPage();
-        
-        // Re-inject services and monitoring
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted) {
-            _injectScrollAndRefreshMonitoring();
+          if (mounted && _isAtTop != isAtTop) {
+            setState(() {
+              _isAtTop = isAtTop;
+            });
+            debugPrint(
+              '📍 Sheet scroll position: ${isAtTop ? "TOP" : "SCROLLED"}',
+            );
           }
-        });
-      },
-      onNavigationRequest: (NavigationRequest request) {
-        debugPrint('🔍 Sheet Navigation request: ${request.url}');
-        
-        // SAME AS WebViewPage - Handle navigation requests
-        return _handleNavigationRequest(request);
-      },
-      onWebResourceError: (WebResourceError error) {
-        debugPrint('❌ Sheet web resource error: ${error.description}');
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
+        } catch (e) {
+          debugPrint('❌ Error parsing scroll message: $e');
         }
       },
-    ),
-  );
-
-  // Start monitoring loading state
-  _startLoadingMonitor();
-}
-
-// ADD THIS METHOD - Same as WebViewPage
-NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-  debugPrint('🔍 Handling navigation in WebViewSheet: ${request.url}');
-
-  // PRIORITY: Handle external URLs with ?external=1 parameter
-  if (request.url.contains('?external=1')) {
-    _handleExternalNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // Handle new-web:// requests - PREVENT and open new WebView layer
-  if (request.url.startsWith('new-web://')) {
-    _handleNewWebNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // Handle new-sheet:// requests
-  if (request.url.startsWith('new-sheet://')) {
-    _handleSheetNavigation(request.url); 
-    return NavigationDecision.prevent;
-  }
-
-  // For loggedin:// requests, also prevent to avoid issues
-  if (request.url.startsWith('loggedin://')) {
-    debugPrint('🔐 Login success detected in WebViewSheet - but user is already logged in');
-    return NavigationDecision.prevent;
-  }
-
-  // For all service-related URLs, prevent navigation (they'll be handled by JavaScript)
-  if (request.url.startsWith('dark-mode://') ||
-      request.url.startsWith('light-mode://') ||
-      request.url.startsWith('system-mode://') ||
-      request.url.startsWith('logout://') ||
-      request.url.startsWith('get-location://') ||
-      request.url.startsWith('get-contacts://') ||
-      request.url.startsWith('take-screenshot://') ||
-      request.url.startsWith('save-image://') ||
-      request.url.startsWith('save-pdf://') ||
-      request.url.startsWith('alert://') ||
-      request.url.startsWith('confirm://') ||
-      request.url.startsWith('prompt://') ||
-      request.url.contains('barcode') ||
-      request.url.contains('scan')) {
-    // These will be handled by the re-injected JavaScript
-    return NavigationDecision.prevent;
-  }
-
-  // Allow normal navigation for other URLs
-  return NavigationDecision.navigate;
-}
-
-void _handleExternalNavigation(String url) {
-  debugPrint('🌐 External navigation detected in WebViewSheet: $url');
-  
-  try {
-    // Remove the ?external=1 parameter to get the clean URL
-    String cleanUrl = url.replaceAll('?external=1', '');
-    
-    // Also handle case where there are other parameters after external=1
-    cleanUrl = cleanUrl.replaceAll('&external=1', '');
-    cleanUrl = cleanUrl.replaceAll('external=1&', '');
-    cleanUrl = cleanUrl.replaceAll('external=1', '');
-    
-    // Clean up any leftover ? or & at the end
-    if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
-      cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
-    }
-    
-    debugPrint('🔗 Clean URL for external navigation: $cleanUrl');
-    
-    // Validate URL
-    if (cleanUrl.isEmpty || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
-      debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
-      _showUrlError('Invalid URL format');
-      return;
-    }
-    
-    // Extract domain for title
-    String title = 'Web View';
-    try {
-      Uri uri = Uri.parse(cleanUrl);
-      title = uri.host.isNotEmpty ? uri.host : 'Web View';
-      // Remove www. prefix for cleaner title
-      if (title.startsWith('www.')) {
-        title = title.substring(4);
-      }
-    } catch (e) {
-      debugPrint('Error parsing URL for title: $e');
-    }
-    
-    // Navigate using WebViewService (creates another layer)
-    WebViewService().navigate(
-      context,
-      url: cleanUrl,
-      linkType: 'regular_webview', // You can change this to 'sheet_webview' if preferred
-      title: title,
     );
-    
-    debugPrint('✅ Successfully opened external URL from sheet: $cleanUrl');
-    
-  } catch (e) {
-    debugPrint('❌ Error handling external navigation in sheet: $e');
-    _showUrlError('Failed to open external URL');
-  }
-}
 
-void _handleNewWebNavigation(String url) {
-  debugPrint('🌐 Opening new WebView from sheet: $url');
+    // Add JavaScript channel for pull-to-refresh
+    _controller.addJavaScriptChannel(
+      _refreshChannelName,
+      onMessageReceived: (JavaScriptMessage message) {
+        if (message.message == 'refresh') {
+          debugPrint('🔄 Pull-to-refresh triggered from JavaScript in sheet');
+          _handleJavaScriptRefresh();
+        }
+      },
+    );
 
-  String targetUrl = 'https://mobile.erpforever.com/';
+    // Set proper navigation delegate to handle page reloads
+    _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (String url) {
+          debugPrint('⏳ Sheet page started loading: $url');
+          if (mounted) {
+            setState(() {
+              _isLoading = true;
+            });
+          }
+        },
+        onPageFinished: (String url) {
+          debugPrint('✅ Sheet page finished loading: $url');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
 
-  if (url.contains('?')) {
-    try {
-      Uri uri = Uri.parse(url.replaceFirst('new-web://', 'https://'));
-      if (uri.queryParameters.containsKey('url')) {
-        targetUrl = uri.queryParameters['url']!;
-      }
-    } catch (e) {
-      debugPrint("Error parsing URL parameters: $e");
-    }
-  }
+          // CRITICAL: Re-inject all WebViewService JavaScript after page loads - SAME AS WebViewPage
+          _reinjectWebViewServiceJS();
 
-  // Navigate to another WebViewPage - SAME AS WebViewPage
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
-    ),
-  ).then((_) {
-    // When returning from the new WebViewPage, re-register this controller - SAME AS WebViewPage
-    if (mounted && context.mounted) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        WebViewService().pushController(_controller, context, _pageId);
-      });
-    }
-  });
-}
+          // Enhanced page setup for sheets
+          _setupSheetPage();
 
-void _handleSheetNavigation(String url) {
-  debugPrint('📋 Opening new sheet from current sheet: $url');
+          // Re-inject services and monitoring
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) {
+              _injectScrollAndRefreshMonitoring();
+            }
+          });
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          debugPrint('🔍 Sheet Navigation request: ${request.url}');
 
-  String targetUrl = widget.url; // Use current URL as default
-
-  if (url.contains('?url=')) {
-    try {
-      Uri uri = Uri.parse(url.replaceFirst('new-sheet://', 'https://'));
-      if (uri.queryParameters.containsKey('url')) {
-        targetUrl = uri.queryParameters['url']!;
-      }
-    } catch (e) {
-      debugPrint('❌ Error parsing URL parameters: $e');
-    }
-  }
-
-  // Open another sheet
-  WebViewService().navigate(
-    context,
-    url: targetUrl,
-    linkType: 'sheet_webview',
-    title: widget.title,
-  );
-}
-
-void _showUrlError(String message) {
-  if (mounted) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
+          // SAME AS WebViewPage - Handle navigation requests
+          return _handleNavigationRequest(request);
+        },
+        onWebResourceError: (WebResourceError error) {
+          debugPrint('❌ Sheet web resource error: ${error.description}');
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        },
       ),
     );
+
+    // Start monitoring loading state
+    _startLoadingMonitor();
   }
-}
+
+  // ADD THIS METHOD - Same as WebViewPage
+  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+    debugPrint('🔍 Handling navigation in WebViewSheet: ${request.url}');
+
+    // PRIORITY: Handle external URLs with ?external=1 parameter
+    if (request.url.contains('?external=1')) {
+      _handleExternalNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // Handle new-web:// requests - PREVENT and open new WebView layer
+    if (request.url.startsWith('new-web://')) {
+      _handleNewWebNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // Handle new-sheet:// requests
+    if (request.url.startsWith('new-sheet://')) {
+      _handleSheetNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // For loggedin:// requests, also prevent to avoid issues
+    if (request.url.startsWith('loggedin://')) {
+      debugPrint(
+        '🔐 Login success detected in WebViewSheet - but user is already logged in',
+      );
+      return NavigationDecision.prevent;
+    }
+
+    // For all service-related URLs, prevent navigation (they'll be handled by JavaScript)
+    if (request.url.startsWith('dark-mode://') ||
+        request.url.startsWith('light-mode://') ||
+        request.url.startsWith('system-mode://') ||
+        request.url.startsWith('logout://') ||
+        request.url.startsWith('get-location://') ||
+        request.url.startsWith('get-contacts://') ||
+        request.url.startsWith('take-screenshot://') ||
+        request.url.startsWith('save-image://') ||
+        request.url.startsWith('save-pdf://') ||
+        request.url.startsWith('alert://') ||
+        request.url.startsWith('confirm://') ||
+        request.url.startsWith('prompt://') ||
+        request.url.contains('barcode') ||
+        request.url.contains('scan')) {
+      // These will be handled by the re-injected JavaScript
+      return NavigationDecision.prevent;
+    }
+
+    // Allow normal navigation for other URLs
+    return NavigationDecision.navigate;
+  }
+
+  void _handleExternalNavigation(String url) {
+    debugPrint('🌐 External navigation detected in WebViewSheet: $url');
+
+    try {
+      // Remove the ?external=1 parameter to get the clean URL
+      String cleanUrl = url.replaceAll('?external=1', '');
+
+      // Also handle case where there are other parameters after external=1
+      cleanUrl = cleanUrl.replaceAll('&external=1', '');
+      cleanUrl = cleanUrl.replaceAll('external=1&', '');
+      cleanUrl = cleanUrl.replaceAll('external=1', '');
+
+      // Clean up any leftover ? or & at the end
+      if (cleanUrl.endsWith('?') || cleanUrl.endsWith('&')) {
+        cleanUrl = cleanUrl.substring(0, cleanUrl.length - 1);
+      }
+
+      debugPrint('🔗 Clean URL for external browser: $cleanUrl');
+
+      // Validate URL
+      if (cleanUrl.isEmpty ||
+          (!cleanUrl.startsWith('http://') &&
+              !cleanUrl.startsWith('https://'))) {
+        debugPrint('❌ Invalid URL for external navigation: $cleanUrl');
+        _showUrlError('Invalid URL format');
+        return;
+      }
+
+      // Launch in default browser
+      _launchInDefaultBrowser(cleanUrl);
+    } catch (e) {
+      debugPrint('❌ Error handling external navigation: $e');
+      _showUrlError('Failed to open external URL');
+    }
+  }
+
+  // Add this new method to WebViewSheet
+  Future<void> _launchInDefaultBrowser(String url) async {
+    try {
+      debugPrint('🌐 Opening URL in default browser: $url');
+
+      final Uri uri = Uri.parse(url);
+
+      // Check if the URL can be launched
+      if (await canLaunchUrl(uri)) {
+        // Launch in external browser (not in-app)
+        final bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication, // Force external browser
+        );
+
+        if (launched) {
+          debugPrint('✅ Successfully opened URL in default browser');
+
+          // Show success feedback
+          if (mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Opening in browser...'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        } else {
+          debugPrint('❌ Failed to launch URL in browser');
+          _showUrlError('Could not open URL in browser');
+        }
+      } else {
+        debugPrint('❌ Cannot launch URL: $url');
+        _showUrlError('Cannot open this type of URL');
+      }
+    } catch (e) {
+      debugPrint('❌ Error launching URL in browser: $e');
+      _showUrlError('Failed to open browser: ${e.toString()}');
+    }
+  }
+
+  void _handleNewWebNavigation(String url) {
+    debugPrint('🌐 Opening new WebView from sheet: $url');
+
+    String targetUrl = 'https://mobile.erpforever.com/';
+
+    if (url.contains('?')) {
+      try {
+        Uri uri = Uri.parse(url.replaceFirst('new-web://', 'https://'));
+        if (uri.queryParameters.containsKey('url')) {
+          targetUrl = uri.queryParameters['url']!;
+        }
+      } catch (e) {
+        debugPrint("Error parsing URL parameters: $e");
+      }
+    }
+
+    // Navigate to another WebViewPage - SAME AS WebViewPage
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WebViewPage(url: targetUrl, title: 'Web View'),
+      ),
+    ).then((_) {
+      // When returning from the new WebViewPage, re-register this controller - SAME AS WebViewPage
+      if (mounted && context.mounted) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          WebViewService().pushController(_controller, context, _pageId);
+        });
+      }
+    });
+  }
+
+  void _handleSheetNavigation(String url) {
+    debugPrint('📋 Opening new sheet from current sheet: $url');
+
+    String targetUrl = widget.url; // Use current URL as default
+
+    if (url.contains('?url=')) {
+      try {
+        Uri uri = Uri.parse(url.replaceFirst('new-sheet://', 'https://'));
+        if (uri.queryParameters.containsKey('url')) {
+          targetUrl = uri.queryParameters['url']!;
+        }
+      } catch (e) {
+        debugPrint('❌ Error parsing URL parameters: $e');
+      }
+    }
+
+    // Open another sheet
+    WebViewService().navigate(
+      context,
+      url: targetUrl,
+      linkType: 'sheet_webview',
+      title: widget.title,
+    );
+  }
+
+  void _showUrlError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   // Handle refresh triggered from JavaScript
   Future<void> _handleJavaScriptRefresh() async {
     debugPrint('🔄 Handling JavaScript refresh request in sheet');
-    
+
     try {
       if (mounted) {
         setState(() {
           _isLoading = true;
         });
       }
-      
+
       await _controller.reload();
       debugPrint('✅ JavaScript refresh completed successfully in sheet');
     } catch (e) {
@@ -337,22 +370,24 @@ void _showUrlError(String message) {
 
   void _startLoadingMonitor() {
     // Monitor loading state and navigation
-    _loadingTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) async {
+    _loadingTimer = Timer.periodic(const Duration(milliseconds: 200), (
+      timer,
+    ) async {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      
+
       try {
         // Check if we can go back
         final canGoBack = await _controller.canGoBack();
-        
+
         if (mounted && _canGoBack != canGoBack) {
           setState(() {
             _canGoBack = canGoBack;
           });
         }
-        
+
         // Stop timer after initial setup
         if (timer.tick >= 10 && !_isLoading) {
           timer.cancel();
@@ -447,10 +482,10 @@ void _showUrlError(String message) {
     ''');
   }
 
-void _reinjectWebViewServiceJS() {
-  debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewSheet...');
+  void _reinjectWebViewServiceJS() {
+    debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewSheet...');
 
-  _controller.runJavaScript('''
+    _controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading in WebViewSheet...");
     
     // Enhanced click handler with full protocol support - SAME AS WebViewPage
@@ -874,7 +909,7 @@ void _reinjectWebViewServiceJS() {
     console.log("  - attribute detection: data-scan-type, data-continuous, .continuous-scan");
     console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
   ''');
-}
+  }
 
   void _injectScrollAndRefreshMonitoring() {
     _controller.runJavaScript('''
@@ -1170,36 +1205,36 @@ void _reinjectWebViewServiceJS() {
     ''');
   }
 
-Future<bool> _onWillPop() async {
-  try {
-    if (await _controller.canGoBack()) {
-      await _controller.goBack();
-      final canGoBack = await _controller.canGoBack();
-      if (mounted) {
-        setState(() {
-          _canGoBack = canGoBack;
-        });
-        // Re-register controller after navigation - SAME AS WebViewPage
-        WebViewService().pushController(_controller, context, _pageId);
+  Future<bool> _onWillPop() async {
+    try {
+      if (await _controller.canGoBack()) {
+        await _controller.goBack();
+        final canGoBack = await _controller.canGoBack();
+        if (mounted) {
+          setState(() {
+            _canGoBack = canGoBack;
+          });
+          // Re-register controller after navigation - SAME AS WebViewPage
+          WebViewService().pushController(_controller, context, _pageId);
+        }
+        return false;
       }
-      return false;
+    } catch (e) {
+      debugPrint('❌ Error in _onWillPop: $e');
     }
-  } catch (e) {
-    debugPrint('❌ Error in _onWillPop: $e');
-  }
-  
-  // Sheet is closing, clear controller reference - SAME AS WebViewPage
-  _clearControllerReference();
-  return true;
-}
 
-// ADD THIS METHOD - Same as WebViewPage
-void _clearControllerReference() {
-  debugPrint('🧹 WebViewSheet clearing controller reference: $_pageId');
-  
-  // Pop this specific controller from the stack - SAME AS WebViewPage
-  WebViewService().popController(_pageId);
-}
+    // Sheet is closing, clear controller reference - SAME AS WebViewPage
+    _clearControllerReference();
+    return true;
+  }
+
+  // ADD THIS METHOD - Same as WebViewPage
+  void _clearControllerReference() {
+    debugPrint('🧹 WebViewSheet clearing controller reference: $_pageId');
+
+    // Pop this specific controller from the stack - SAME AS WebViewPage
+    WebViewService().popController(_pageId);
+  }
 
   Future<void> _goBack() async {
     if (await _controller.canGoBack()) {
@@ -1214,32 +1249,30 @@ void _clearControllerReference() {
   }
 
   @override
-Widget build(BuildContext context) {
-  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+  Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-  return WillPopScope(
-    onWillPop: _onWillPop,
-    child: Container(
-      height: MediaQuery.of(context).size.height * widget.heightFactor,
-      decoration: BoxDecoration(
-        color: isDarkMode ? Colors.black : Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Container(
+        height: MediaQuery.of(context).size.height * widget.heightFactor,
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.black : Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            _buildSheetHeader(context, isDarkMode),
+            const Divider(height: 1),
+            Expanded(child: _buildWebViewContent(isDarkMode)),
+          ],
         ),
       ),
-      child: Column(
-        children: [
-          _buildSheetHeader(context, isDarkMode),
-          const Divider(height: 1),
-          Expanded(
-            child: _buildWebViewContent(isDarkMode),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildWebViewContent(bool isDarkMode) {
     return Container(
@@ -1258,13 +1291,10 @@ Widget build(BuildContext context) {
               Factory<VerticalDragGestureRecognizer>(
                 VerticalDragGestureRecognizer.new,
               ),
-              Factory<PanGestureRecognizer>(
-                PanGestureRecognizer.new,
-              ),
+              Factory<PanGestureRecognizer>(PanGestureRecognizer.new),
             },
           ),
-          if (_isLoading) 
-            _buildLoadingIndicator(isDarkMode),
+          if (_isLoading) _buildLoadingIndicator(isDarkMode),
         ],
       ),
     );
@@ -1291,7 +1321,7 @@ Widget build(BuildContext context) {
               borderRadius: BorderRadius.circular(2.5),
             ),
           ),
-          
+
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 4, 8, 4),
             child: Row(
@@ -1306,9 +1336,9 @@ Widget build(BuildContext context) {
                     onPressed: _goBack,
                     tooltip: 'Back',
                   ),
-                
+
                 const SizedBox(width: 8),
-                
+
                 // Title
                 Expanded(
                   child: Text(
@@ -1331,7 +1361,7 @@ Widget build(BuildContext context) {
                     size: 24,
                   ),
                   onPressed: () {
-                    _clearControllerReference(); 
+                    _clearControllerReference();
                     Navigator.pop(context);
                   },
                   tooltip: 'Close',
@@ -1379,15 +1409,18 @@ Widget build(BuildContext context) {
     );
   }
 
-@override
-void dispose() {
-  debugPrint('🧹 WebViewSheet disposing - popping controller from stack: $_pageId');
-  
-  // Cancel any timers
-  _loadingTimer?.cancel();
-  
-  // Pop this specific controller from the stack - SAME AS WebViewPage
-  WebViewService().popController(_pageId);
-  
-  super.dispose();
-}}
+  @override
+  void dispose() {
+    debugPrint(
+      '🧹 WebViewSheet disposing - popping controller from stack: $_pageId',
+    );
+
+    // Cancel any timers
+    _loadingTimer?.cancel();
+
+    // Pop this specific controller from the stack - SAME AS WebViewPage
+    WebViewService().popController(_pageId);
+
+    super.dispose();
+  }
+}

@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'package:ERPForever/services/refresh_state_manager.dart';
 import 'package:ERPForever/themes/dynamic_theme.dart';
 import 'package:ERPForever/widgets/screenshot_wrapper.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +33,7 @@ void main() async {
         ChangeNotifierProvider.value(value: configService),
         ChangeNotifierProvider(create: (_) => themeService),
         ChangeNotifierProvider.value(value: authService),
+        ChangeNotifierProvider(create: (_) => RefreshStateManager()),
       ],
       child: MyApp(
         initialThemeMode: savedTheme,

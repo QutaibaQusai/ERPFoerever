@@ -1,7 +1,9 @@
 // lib/widgets/webview_sheet.dart - FIXED with proper context management like WebViewPage
 import 'dart:async';
 import 'package:ERPForever/pages/webview_page.dart';
+import 'package:ERPForever/services/refresh_state_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/gestures.dart';
@@ -34,14 +36,28 @@ class _WebViewSheetState extends State<WebViewSheet> {
       'SheetScrollMonitor_${DateTime.now().millisecondsSinceEpoch}';
   final String _refreshChannelName =
       'SheetPullToRefreshChannel_${DateTime.now().millisecondsSinceEpoch}';
-  late String _pageId; // ADD THIS LINE - Same as WebViewPage
+  late String _pageId; 
+    RefreshStateManager? _refreshManager;
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeWebView();
-  }
 
+@override
+void initState() {
+  super.initState();
+  _initializeWebView();
+}
+@override
+void didChangeDependencies() {
+  super.didChangeDependencies();
+  
+  // Store reference to RefreshStateManager safely
+  _refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+  
+  // Delay the state change to avoid setState during build
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _refreshManager?.setSheetOpen(true);
+    debugPrint('📋 WebViewSheet opened - background refresh DISABLED');
+  });
+}
   void _initializeWebView() {
     // Use WebViewService.createController() to get all JavaScript bridges
     _controller = WebViewService().createController(widget.url, context);
@@ -1354,18 +1370,23 @@ class _WebViewSheetState extends State<WebViewSheet> {
                 ),
 
                 // Close button
-                IconButton(
-                  icon: Icon(
-                    Icons.close,
-                    color: isDarkMode ? Colors.white : Colors.black,
-                    size: 24,
-                  ),
-                  onPressed: () {
-                    _clearControllerReference();
-                    Navigator.pop(context);
-                  },
-                  tooltip: 'Close',
-                ),
+IconButton(
+  icon: Icon(
+    Icons.close,
+    color: isDarkMode ? Colors.white : Colors.black,
+    size: 24,
+  ),
+  onPressed: () {
+    _clearControllerReference();
+    // FIXED: Use stored reference instead of Provider.of
+    if (_refreshManager != null) {
+      _refreshManager!.setSheetOpen(false);
+      debugPrint('📋 WebViewSheet closing via close button - background refresh ENABLED');
+    }
+    Navigator.pop(context);
+  },
+  tooltip: 'Close',
+),
               ],
             ),
           ),
@@ -1409,18 +1430,22 @@ class _WebViewSheetState extends State<WebViewSheet> {
     );
   }
 
-  @override
-  void dispose() {
-    debugPrint(
-      '🧹 WebViewSheet disposing - popping controller from stack: $_pageId',
-    );
+@override
+void dispose() {
+  debugPrint('🧹 WebViewSheet disposing - popping controller from stack: $_pageId');
 
-    // Cancel any timers
-    _loadingTimer?.cancel();
+  // Cancel any timers
+  _loadingTimer?.cancel();
 
-    // Pop this specific controller from the stack - SAME AS WebViewPage
-    WebViewService().popController(_pageId);
+  // Pop this specific controller from the stack
+  WebViewService().popController(_pageId);
 
-    super.dispose();
+  // FIXED: Re-enable background refresh using stored reference
+  if (_refreshManager != null) {
+    _refreshManager!.setSheetOpen(false);
+    debugPrint('📋 WebViewSheet closing - background refresh ENABLED');
   }
+
+  super.dispose();
+}
 }

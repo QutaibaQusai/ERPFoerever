@@ -1,4 +1,5 @@
 // lib/services/webview_service.dart
+import 'package:ERPForever/services/app_data_service.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
@@ -74,121 +75,193 @@ WebViewController? get _currentController {
     );
   }
 
-  WebViewController createController(String url, [BuildContext? context]) {
-    debugPrint('🌐 Creating WebView controller for: $url');
+WebViewController createController(String url, [BuildContext? context]) {
+  debugPrint('🌐 Creating WebView controller for: $url');
 
-    final controller = WebViewController();
+  final controller = WebViewController();
 
-    // Configure the controller
-    controller
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0x00000000))
-      ..enableZoom(false)
-      ..setUserAgent('ERPForever-Flutter-App/1.0')
-      ..addJavaScriptChannel(
-        'BarcodeScanner',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('📸 Barcode message: ${message.message}');
-          _handleBarcodeRequest(message.message);
+  // Configure the controller
+  controller
+    ..setJavaScriptMode(JavaScriptMode.unrestricted)
+    ..setBackgroundColor(const Color(0x00000000))
+    ..enableZoom(false)
+    ..setUserAgent('ERPForever-Flutter-App/1.0')
+    
+    // ADD: All your existing JavaScript channels (keep these as they are)
+    ..addJavaScriptChannel(
+      'BarcodeScanner',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('📸 Barcode message: ${message.message}');
+        _handleBarcodeRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'ThemeManager',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('🎨 Theme message: ${message.message}');
+        _handleThemeChange(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'AuthManager',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('🚪 Auth message: ${message.message}');
+        _handleAuthRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'LocationManager',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('🌍 Location message: ${message.message}');
+        _handleLocationRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'ContactsManager',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('📞 Contacts message: ${message.message}');
+        _handleContactsRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'ScreenshotManager',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('📸 Screenshot message: ${message.message}');
+        _handleScreenshotRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'ImageSaver',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('🖼️ Image saver message: ${message.message}');
+        _handleImageSaveRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'PdfSaver',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('📄 PDF saver message: ${message.message}');
+        _handlePdfSaveRequest(message.message);
+      },
+    )
+    ..addJavaScriptChannel(
+      'AlertManager',
+      onMessageReceived: (JavaScriptMessage message) {
+        debugPrint('🚨 Alert message: ${message.message}');
+        _handleAlertRequest(message.message);
+      },
+    )
+    ..setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (String url) {
+          debugPrint('⏳ Page started loading: $url');
         },
-      )
-      ..addJavaScriptChannel(
-        'ThemeManager',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('🎨 Theme message: ${message.message}');
-          _handleThemeChange(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'AuthManager',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('🚪 Auth message: ${message.message}');
-          _handleAuthRequest(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'LocationManager',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('🌍 Location message: ${message.message}');
-          _handleLocationRequest(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'ContactsManager',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('📞 Contacts message: ${message.message}');
-          _handleContactsRequest(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'ScreenshotManager',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('📸 Screenshot message: ${message.message}');
-          _handleScreenshotRequest(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'ImageSaver',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('🖼️ Image saver message: ${message.message}');
-          _handleImageSaveRequest(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'PdfSaver',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('📄 PDF saver message: ${message.message}');
-          _handlePdfSaveRequest(message.message);
-        },
-      )
-      ..addJavaScriptChannel(
-        'AlertManager',
-        onMessageReceived: (JavaScriptMessage message) {
-          debugPrint('🚨 Alert message: ${message.message}');
-          _handleAlertRequest(message.message);
-        },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (String url) {
-            debugPrint('⏳ Page started loading: $url');
-          },
-          onPageFinished: (String url) {
-            debugPrint('✅ Page finished loading: $url');
-            _injectJavaScript(controller);
+        onPageFinished: (String url) {
+          debugPrint('✅ Page finished loading: $url');
+          _injectJavaScript(controller);
 
-            // Make WebView content screenshot-ready
-            controller.runJavaScript('''
-              // Enable hardware acceleration for screenshots
-              document.body.style.webkitBackfaceVisibility = 'hidden';
-              document.body.style.webkitPerspective = '1000px';
-              document.body.style.webkitTransform = 'translate3d(0,0,0)';
-              document.body.style.transform = 'translate3d(0,0,0)';
-              
-              // Ensure content is visible for screenshots
-              document.documentElement.style.webkitTransform = 'translateZ(0)';
-              document.documentElement.style.transform = 'translateZ(0)';
-              
-              console.log("✅ WebView optimized for screenshots");
-            ''');
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            debugPrint('🔄 Navigation request: ${request.url}');
-            return _handleNavigationRequest(request);
-          },
-          onWebResourceError: (WebResourceError error) {
-            debugPrint('❌ Web resource error: ${error.description}');
-          },
-        ),
-      )
-      ..setUserAgent('ERPForever-Flutter-App');
+          // Make WebView content screenshot-ready
+          controller.runJavaScript('''
+            document.body.style.webkitBackfaceVisibility = 'hidden';
+            document.body.style.webkitPerspective = '1000px';
+            document.body.style.webkitTransform = 'translate3d(0,0,0)';
+            document.body.style.transform = 'translate3d(0,0,0)';
+            
+            document.documentElement.style.webkitTransform = 'translateZ(0)';
+            document.documentElement.style.transform = 'translateZ(0)';
+            
+            console.log("✅ WebView optimized for screenshots");
+          ''');
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          debugPrint('🔄 Navigation request: ${request.url}');
+          return _handleNavigationRequest(request);
+        },
+        onWebResourceError: (WebResourceError error) {
+          debugPrint('❌ Web resource error: ${error.description}');
+        },
+      ),
+    )
+    ..setUserAgent('ERPForever-Flutter-App');
 
-    // Load the URL
-    controller.loadRequest(Uri.parse(url));
+  // NEW: Load URL with app data
+  _loadUrlWithAppData(controller, url);
 
-    return controller;
+  return controller;
+}
+
+// ADD this new method to your WebViewService class:
+Future<void> _loadUrlWithAppData(WebViewController controller, String originalUrl) async {
+  try {
+    // Collect app data
+    final appData = await AppDataService().collectDataForServer();
+    
+    // Build enhanced URL with app data
+    final enhancedUrl = _buildEnhancedUrl(originalUrl, appData);
+    
+    // Build custom headers with app data
+    final headers = _buildAppDataHeaders(appData);
+    
+    // Load the enhanced URL with custom headers
+    await controller.loadRequest(
+      Uri.parse(enhancedUrl),
+      headers: headers,
+    );
+    
+    debugPrint('✅ Loaded URL with app data: $enhancedUrl');
+    
+  } catch (e) {
+    debugPrint('❌ Error loading URL with app data: $e');
+    // Fallback to original URL
+    controller.loadRequest(Uri.parse(originalUrl));
+  }
+}
+
+// ADD this new method to your WebViewService class:
+String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
+  try {
+    final uri = Uri.parse(baseUrl);
+    final queryParams = Map<String, String>.from(uri.queryParameters);
+    
+    // Add essential app data to URL parameters
+    queryParams.addAll({
+      'app_source': 'flutter_app',
+      'app_version': appData['app_version'] ?? 'unknown',
+      'platform': appData['platform'] ?? 'unknown',
+      'device_model': appData['device_model'] ?? 'unknown',
+      'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+    });
+
+    final newUri = uri.replace(queryParameters: queryParams);
+    return newUri.toString();
+    
+  } catch (e) {
+    debugPrint('❌ Error building enhanced URL: $e');
+    return baseUrl;
+  }
+}
+
+// ADD this new method to your WebViewService class:
+Map<String, String> _buildAppDataHeaders(Map<String, String> appData) {
+  final headers = <String, String>{
+    'User-Agent': 'ERPForever-Flutter-App/1.0',
+    'X-App-Source': 'flutter_mobile',
+    'X-Client-Version': appData['app_version'] ?? 'unknown',
+    'X-Platform': appData['platform'] ?? 'unknown',
+    'X-Device-Model': appData['device_model'] ?? 'unknown',
+    'X-App-Timestamp': DateTime.now().toIso8601String(),
+  };
+
+  // Add important data as custom headers
+  if (appData['device_brand'] != null) {
+    headers['X-Device-Brand'] = appData['device_brand']!;
+  }
+  if (appData['build_number'] != null) {
+    headers['X-Build-Number'] = appData['build_number']!;
   }
 
+  return headers;
+}
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
 

@@ -1,6 +1,8 @@
 // lib/pages/webview_page.dart - Working navigation + All services
+import 'package:ERPForever/services/refresh_state_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:ERPForever/services/webview_service.dart';
@@ -121,6 +123,15 @@ class _WebViewPageState extends State<WebViewPage> {
         },
       ),
     );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+    try {
+      final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+      refreshManager.registerController(_controller);
+      debugPrint('✅ WebViewPage controller registered with RefreshStateManager');
+    } catch (e) {
+      debugPrint('❌ Error registering WebViewPage controller: $e');
+    }
+  });
   }
 
   // Inject native JavaScript pull-to-refresh functionality
@@ -335,6 +346,12 @@ class _WebViewPageState extends State<WebViewPage> {
 
   // Handle refresh triggered from JavaScript
   Future<void> _handleJavaScriptRefresh() async {
+      final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+  
+  if (!refreshManager.shouldAllowRefresh()) {
+    debugPrint('🚫 WebViewPage refresh blocked - sheet is open');
+    return;
+  }
     debugPrint('🔄 Handling JavaScript refresh request');
 
     try {
@@ -344,14 +361,13 @@ class _WebViewPageState extends State<WebViewPage> {
       debugPrint('❌ Error during JavaScript refresh: $e');
     }
   }
+void _reinjectWebViewServiceJS() {
+  debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewPage...');
 
-  void _reinjectWebViewServiceJS() {
-    debugPrint('💉 Re-injecting WebViewService JavaScript...');
-
-    _controller.runJavaScript('''
-    console.log("🚀 ERPForever WebView JavaScript loading...");
+  _controller.runJavaScript('''
+    console.log("🚀 ERPForever WebView JavaScript loading in WebViewPage...");
     
-    // Enhanced click handler with FIXED barcode detection for WebViewPage
+    // Enhanced click handler with full protocol support - SAME AS WebViewPage
     document.addEventListener('click', function(e) {
       let element = e.target;
       
@@ -762,8 +778,91 @@ class _WebViewPageState extends State<WebViewPage> {
       version: '1.1.0'
     };
 
-    console.log("✅ ERPForever WebView JavaScript ready!");
-    console.log("🔧 All services reinjected in WebViewPage with FIXED barcode detection");
+    // WebViewPage refresh blocking support - NEW ADDITION
+    let webViewPageRefreshBlocked = false;
+    
+    // Function for Flutter to update refresh state in WebViewPage
+    window.setRefreshBlocked = function(blocked) {
+      webViewPageRefreshBlocked = blocked;
+      console.log('🔄 WebViewPage refresh state updated:', blocked ? 'BLOCKED' : 'ALLOWED');
+      
+      // Update any existing pull-to-refresh indicators
+      if (blocked) {
+        // Disable any active refresh operations
+        const refreshIndicators = document.querySelectorAll('[id*="refresh-indicator"]');
+        refreshIndicators.forEach(indicator => {
+          if (indicator.style) {
+            indicator.style.display = 'none';
+          }
+        });
+      } else {
+        // Re-enable refresh indicators
+        const refreshIndicators = document.querySelectorAll('[id*="refresh-indicator"]');
+        refreshIndicators.forEach(indicator => {
+          if (indicator.style) {
+            indicator.style.display = '';
+          }
+        });
+      }
+    };
+    
+    // Enhanced touch event handling for refresh blocking
+    let touchStartY = 0;
+    let isAtPageTop = false;
+    
+    // Function to check if we're at the top of the page
+    function checkIfAtTop() {
+      const scrollTop = Math.max(
+        window.pageYOffset || 0,
+        document.documentElement.scrollTop || 0,
+        document.body.scrollTop || 0
+      );
+      isAtPageTop = scrollTop <= 5;
+      return isAtPageTop;
+    }
+    
+    // Override touch events when refresh is blocked
+    document.addEventListener('touchstart', function(e) {
+      if (webViewPageRefreshBlocked) {
+        checkIfAtTop();
+        if (isAtPageTop && e.touches && e.touches.length > 0) {
+          touchStartY = e.touches[0].clientY;
+          console.log('🔄 WebViewPage: Touch start at top, monitoring for refresh gesture');
+        }
+      }
+    }, { passive: true });
+    
+    document.addEventListener('touchmove', function(e) {
+      if (webViewPageRefreshBlocked && isAtPageTop && e.touches && e.touches.length > 0) {
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - touchStartY;
+        
+        // If pulling down from the top, prevent the default behavior
+        if (deltaY > 10) { // Small threshold to avoid blocking normal scrolling
+          if (e.cancelable) {
+            e.preventDefault();
+            console.log('🚫 WebViewPage: Blocked pull-to-refresh gesture (deltaY:', deltaY, ')');
+          }
+        }
+      }
+    }, { passive: false });
+    
+    document.addEventListener('touchend', function(e) {
+      if (webViewPageRefreshBlocked) {
+        touchStartY = 0;
+        isAtPageTop = false;
+      }
+    }, { passive: true });
+    
+    // Scroll event listener to update top position
+    window.addEventListener('scroll', function() {
+      if (webViewPageRefreshBlocked) {
+        checkIfAtTop();
+      }
+    }, { passive: true });
+
+    console.log("✅ ERPForever WebView JavaScript ready in WebViewPage!");
+    console.log("🔧 All services reinjected in WebViewPage with FIXED barcode detection and refresh blocking");
     
     // Log debug info for barcode detection
     console.log("📱 WebViewPage Barcode Detection Enhanced:");
@@ -771,9 +870,9 @@ class _WebViewPageState extends State<WebViewPage> {
     console.log("  - text detection: scan barcode, qr code + continuous variations");
     console.log("  - attribute detection: data-scan-type, data-continuous, .continuous-scan");
     console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
+    console.log("🔄 WebViewPage Refresh Blocking: Initialized and ready");
   ''');
-  }
-
+}
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation in WebViewPage: ${request.url}');
 
@@ -1063,31 +1162,60 @@ class _WebViewPageState extends State<WebViewPage> {
       body: _buildWebViewContent(isDarkMode),
     );
   }
+Widget _buildWebViewContent(bool isDarkMode) {
+  return Consumer<RefreshStateManager>(
+    builder: (context, refreshManager, child) {
+      // Cache the refresh state to avoid calling methods during build
+      final isRefreshAllowed = refreshManager.isRefreshEnabled;
+      
+      return RefreshIndicator(
+        // Only allow refresh when sheet is not open
+        onRefresh: isRefreshAllowed
+            ? _handleJavaScriptRefresh
+            : () async {
+                debugPrint('🚫 WebViewPage refresh blocked - sheet is open');
+                return;
+              },
+        child: SizedBox(
+          height: MediaQuery.of(context).size.height -
+              kToolbarHeight -
+              MediaQuery.of(context).padding.top,
+          child: Stack(
+            children: [
+              WebViewWidget(controller: _controller),
+              if (_isLoading) LoadingWidget(message: "Loading..."),
+              // Show refresh indicator only when allowed
+              if (_isAtTop && !_isLoading && isRefreshAllowed)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(height: 2, color: Colors.transparent),
+                ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
 
-  Widget _buildWebViewContent(bool isDarkMode) {
-    return SizedBox(
-      height:
-          MediaQuery.of(context).size.height -
-          kToolbarHeight -
-          MediaQuery.of(context).padding.top,
-      child: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading) LoadingWidget(message: "Loading..."),
-        ],
-      ),
-    );
+@override
+void dispose() {
+  debugPrint('🧹 WebViewPage disposing - popping controller from stack: $_pageId');
+
+  // ADD THIS: Unregister from RefreshStateManager
+  try {
+    final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+    refreshManager.unregisterController(_controller);
+    debugPrint('✅ WebViewPage controller unregistered from RefreshStateManager');
+  } catch (e) {
+    debugPrint('❌ Error unregistering WebViewPage controller: $e');
   }
 
-  @override
-  void dispose() {
-    debugPrint(
-      '🧹 WebViewPage disposing - popping controller from stack: $_pageId',
-    );
+  // Pop this specific controller from the stack
+  WebViewService().popController(_pageId);
 
-    // Pop this specific controller from the stack
-    WebViewService().popController(_pageId);
-
-    super.dispose();
-  }
+  super.dispose();
+}
 }

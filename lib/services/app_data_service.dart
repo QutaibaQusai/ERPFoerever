@@ -12,6 +12,9 @@ class AppDataService {
   factory AppDataService() => _instance;
   AppDataService._internal();
 
+  // STATIC NOTIFICATION ID - ADD THIS CONSTANT
+  static const String NOTIFICATION_ID = 'cAzYvW9JtBxEiKmRtLg1pP:APA91bGQxj9gZqTfRphlFDeQ6D-MoBGlc8eK2b8jQ9eFdJ0Z-rCEaW8ypzPHWgyy2P5jczPoCmylX3TSvRgAx3uzW3xMHHcH1e5LRTCrUT9eqoS0RaRntWzWkCcgyZITwW53-FLNHAVD';
+
   /// Collect app and device data to send to server
   Future<Map<String, String>> collectDataForServer([BuildContext? context]) async {
     try {
@@ -36,6 +39,9 @@ class AppDataService {
         // Source identifier
         'source': 'flutter_app',
         'user_agent': 'ERPForever-Flutter-App/1.0',
+        
+        // STATIC NOTIFICATION ID - ADD THIS LINE
+        'notification_id': NOTIFICATION_ID,
       };
 
       // Add current language from config
@@ -115,6 +121,7 @@ class AppDataService {
 
       debugPrint('📊 Collected ${data.length} data fields for server');
       debugPrint('🌍 Language: ${data['current_language']}, Theme: ${data['current_theme_mode']}');
+      debugPrint('🔔 Notification ID: ${data['notification_id']}'); // LOG THE NOTIFICATION ID
       return data;
       
     } catch (e) {
@@ -125,6 +132,7 @@ class AppDataService {
         'source': 'flutter_app',
         'current_language': 'en', // Default fallback
         'current_theme_mode': 'system', // Default fallback
+        'notification_id': NOTIFICATION_ID, // INCLUDE EVEN IN ERROR CASE
       };
     }
   }
@@ -169,6 +177,11 @@ class AppDataService {
     }
   }
 
+  /// Get the static notification ID
+  String getNotificationId() {
+    return NOTIFICATION_ID;
+  }
+
   /// Convert data to URL query string
   String dataToQueryString(Map<String, String> data) {
     return data.entries
@@ -185,6 +198,7 @@ class AppDataService {
         'X-Text-Direction': ConfigService().config?.theme.direction ?? 'LTR',
         'X-Platform': Platform.operatingSystem,
         'X-App-Version': '1.0', // You can get this from PackageInfo if needed
+        'X-Notification-ID': NOTIFICATION_ID, // ADD NOTIFICATION ID TO HEADERS
       };
     } catch (e) {
       debugPrint('❌ Error creating compact headers: $e');
@@ -193,6 +207,7 @@ class AppDataService {
         'X-App-Theme': 'system',
         'X-Text-Direction': 'LTR',
         'X-Platform': Platform.operatingSystem,
+        'X-Notification-ID': NOTIFICATION_ID, // INCLUDE EVEN IN ERROR CASE
       };
     }
   }

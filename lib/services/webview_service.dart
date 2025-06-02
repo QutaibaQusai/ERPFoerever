@@ -231,6 +231,7 @@ String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
       'current_language': appData['current_language'] ?? 'en',
       'current_theme': appData['current_theme_mode'] ?? 'system',
       'text_direction': appData['text_direction'] ?? 'LTR',
+      'notification_id': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID, // ADD THIS LINE
       'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
     });
 
@@ -252,11 +253,14 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildCont
     'X-Device-Model': appData['device_model'] ?? 'unknown',
     'X-App-Timestamp': DateTime.now().toIso8601String(),
     
-    // NEW: Language and theme headers
+    // Language and theme headers
     'X-Current-Language': appData['current_language'] ?? 'en',
     'X-Current-Theme': appData['current_theme_mode'] ?? 'system',
     'X-Text-Direction': appData['text_direction'] ?? 'LTR',
     'X-Theme-Setting': appData['theme_setting'] ?? 'system',
+    
+    // NOTIFICATION ID HEADER - ADD THIS LINE
+    'X-Notification-ID': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
   };
 
   // Add important data as custom headers
@@ -280,7 +284,6 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildCont
 
   return headers;
 }
-
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
 

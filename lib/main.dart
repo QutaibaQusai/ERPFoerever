@@ -18,8 +18,25 @@ void main() async {
   final themeService = ThemeService();
   final authService = AuthService();
   
-  // Load configuration
+  // Load configuration with enhanced logging
+  debugPrint('🚀 ERPForever App Starting...');
+  debugPrint('📡 Loading configuration from remote source...');
+  
   await configService.loadConfig();
+  
+  // Log configuration source
+  final cacheStatus = await configService.getCacheStatus();
+  debugPrint('💾 Cache Status: $cacheStatus');
+  
+  if (configService.config != null) {
+    debugPrint('✅ Configuration loaded successfully');
+    debugPrint('🔗 Main Icons: ${configService.config!.mainIcons.length}');
+    debugPrint('📋 Sheet Icons: ${configService.config!.sheetIcons.length}');
+    debugPrint('🌍 Language: ${configService.config!.lang}');
+    debugPrint('🌍 Direction: ${configService.config!.theme.direction}');
+  } else {
+    debugPrint('⚠️ Using fallback configuration');
+  }
   
   // Load saved theme
   final savedTheme = await themeService.getSavedThemeMode();

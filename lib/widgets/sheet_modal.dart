@@ -1,11 +1,40 @@
 // lib/widgets/sheet_modal.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // ADD THIS IMPORT
 import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/webview_service.dart';
+import 'package:ERPForever/services/refresh_state_manager.dart'; // ADD THIS IMPORT
 import 'package:ERPForever/widgets/sheet_action_item.dart';
 
-class SheetModal extends StatelessWidget {
+class SheetModal extends StatefulWidget {
   const SheetModal({super.key});
+
+  @override
+  State<SheetModal> createState() => _SheetModalState();
+}
+
+class _SheetModalState extends State<SheetModal> {
+  RefreshStateManager? _refreshManager;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // NOTIFY REFRESH MANAGER THAT SHEET IS OPENING
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+      _refreshManager?.setSheetOpen(true);
+      debugPrint('📋 SheetModal opening - background refresh/scroll DISABLED');
+    });
+  }
+
+  @override
+  void dispose() {
+    // NOTIFY REFRESH MANAGER THAT SHEET IS CLOSING
+    _refreshManager?.setSheetOpen(false);
+    debugPrint('📋 SheetModal closing - background refresh/scroll ENABLED');
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +100,12 @@ class SheetModal extends StatelessWidget {
 
   Widget _buildCloseButton(BuildContext context, bool isDarkMode) {
     return GestureDetector(
-      onTap: () => Navigator.pop(context),
+      onTap: () {
+        // NOTIFY REFRESH MANAGER THAT SHEET IS CLOSING
+        _refreshManager?.setSheetOpen(false);
+        debugPrint('📋 SheetModal closing via close button - background refresh/scroll ENABLED');
+        Navigator.pop(context);
+      },
       child: Container(
         width: 50,
         height: 50,
@@ -124,6 +158,10 @@ class SheetModal extends StatelessWidget {
   }
 
   void _handleSheetItemTap(BuildContext context, item) {
+    // NOTIFY REFRESH MANAGER THAT SHEET IS CLOSING
+    _refreshManager?.setSheetOpen(false);
+    debugPrint('📋 SheetModal closing via action tap - background refresh/scroll ENABLED');
+    
     Navigator.pop(context);
     
     WebViewService().navigate(

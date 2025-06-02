@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:provider/provider.dart'; // ADD THIS IMPORT
 import 'package:ERPForever/services/config_service.dart';
 import 'package:ERPForever/services/webview_service.dart';
+import 'package:ERPForever/services/refresh_state_manager.dart'; // ADD THIS IMPORT
 import 'package:ERPForever/widgets/dynamic_navigation_icon.dart';
 import 'package:ERPForever/widgets/dynamic_icon.dart';
 
@@ -144,44 +146,61 @@ class DynamicBottomNavigation extends StatelessWidget {
 
     HapticFeedback.mediumImpact();
 
+    // NOTIFY REFRESH MANAGER THAT SHEET IS OPENING
+    final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+    refreshManager.setSheetOpen(true);
+    debugPrint('📋 DynamicBottomNavigation sheet opening - background refresh/scroll DISABLED');
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder:
-          (context) => Container(
-            decoration: BoxDecoration(
-              color: isDarkMode ? Colors.black : Colors.white,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
+      // ADD isDismissible to handle swipe-to-close
+      isDismissible: true,
+      // ADD enableDrag to handle drag-to-close
+      enableDrag: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.black : Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 20),
+            _buildSheetActionsGrid(context, config, isDarkMode),
+            const SizedBox(height: 30),
+            GestureDetector(
+              onTap: () {
+                // NOTIFY REFRESH MANAGER THAT SHEET IS CLOSING
+                refreshManager.setSheetOpen(false);
+                debugPrint('📋 DynamicBottomNavigation sheet closing via close button - background refresh/scroll ENABLED');
+                Navigator.pop(context);
+              },
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.white : Colors.black,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.close,
+                  color: isDarkMode ? Colors.black : Colors.white,
+                ),
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 20),
-                _buildSheetActionsGrid(context, config, isDarkMode),
-                const SizedBox(height: 30),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.white : Colors.black,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.close,
-                      color: isDarkMode ? Colors.black : Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 30),
-              ],
-            ),
-          ),
-    );
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    ).then((_) {
+      // HANDLE SHEET CLOSING BY ANY METHOD (swipe, tap outside, back button)
+      refreshManager.setSheetOpen(false);
+      debugPrint('📋 DynamicBottomNavigation sheet closed - background refresh/scroll ENABLED');
+    });
   }
 
   Widget _buildSheetActionsGrid(BuildContext context, config, bool isDarkMode) {
@@ -225,7 +244,14 @@ class DynamicBottomNavigation extends StatelessWidget {
       children: [
         GestureDetector(
           onTap: () {
+            // NOTIFY REFRESH MANAGER THAT SHEET IS CLOSING
+            final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
+            refreshManager.setSheetOpen(false);
+            debugPrint('📋 DynamicBottomNavigation sheet closing via action button - background refresh/scroll ENABLED');
+            
             Navigator.pop(context);
+            
+            // Navigate to the selected item
             WebViewService().navigate(
               context,
               url: item.link,

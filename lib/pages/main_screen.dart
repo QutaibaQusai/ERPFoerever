@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -770,84 +771,138 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
   refreshManager.registerController(controller);
   }
 
-  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-    debugPrint("Navigation request: ${request.url}");
+NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+  debugPrint("Navigation request: ${request.url}");
 
-    // NEW: Handle external URLs with ?external=1 parameter
-    if (request.url.contains('?external=1')) {
-      _handleExternalNavigation(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    // Theme requests
-    if (request.url.startsWith('dark-mode://') ||
-        request.url.startsWith('light-mode://') ||
-        request.url.startsWith('system-mode://')) {
-      _handleThemeChangeRequest(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    // Auth requests
-    if (request.url.startsWith('logout://')) {
-      _handleLogoutRequest();
-      return NavigationDecision.prevent;
-    }
-
-    // Location requests
-    if (request.url.startsWith('get-location://')) {
-      _handleLocationRequest();
-      return NavigationDecision.prevent;
-    }
-
-    // Contacts requests
-    if (request.url.startsWith('get-contacts://')) {
-      _handleContactsRequest();
-      return NavigationDecision.prevent;
-    }
-
-    // Other navigation requests
-    if (request.url.startsWith('new-web://')) {
-      _handleNewWebNavigation(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    if (request.url.startsWith('new-sheet://')) {
-      _handleSheetNavigation(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    // Barcode requests
-    if (request.url.contains('barcode') || request.url.contains('scan')) {
-      _handleBarcodeScanning(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    if (request.url.startsWith('take-screenshot://')) {
-      _handleScreenshotRequest();
-      return NavigationDecision.prevent;
-    }
-
-    // Image save requests
-    if (request.url.startsWith('save-image://')) {
-      _handleImageSaveRequest(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    if (request.url.startsWith('save-pdf://')) {
-      _handlePdfSaveRequest(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    if (request.url.startsWith('alert://') ||
-        request.url.startsWith('confirm://') ||
-        request.url.startsWith('prompt://')) {
-      _handleAlertRequest(request.url);
-      return NavigationDecision.prevent;
-    }
-
-    return NavigationDecision.navigate;
+  // NEW: Handle external URLs with ?external=1 parameter
+  if (request.url.contains('?external=1')) {
+    _handleExternalNavigation(request.url);
+    return NavigationDecision.prevent;
   }
 
+  // Theme requests
+  if (request.url.startsWith('dark-mode://') ||
+      request.url.startsWith('light-mode://') ||
+      request.url.startsWith('system-mode://')) {
+    _handleThemeChangeRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  // Auth requests
+  if (request.url.startsWith('logout://')) {
+    _handleLogoutRequest();
+    return NavigationDecision.prevent;
+  }
+
+  // Location requests
+  if (request.url.startsWith('get-location://')) {
+    _handleLocationRequest();
+    return NavigationDecision.prevent;
+  }
+
+  // Contacts requests
+  if (request.url.startsWith('get-contacts://')) {
+    _handleContactsRequest();
+    return NavigationDecision.prevent;
+  }
+
+  // Other navigation requests
+  if (request.url.startsWith('new-web://')) {
+    _handleNewWebNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  if (request.url.startsWith('new-sheet://')) {
+    _handleSheetNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  // NEW: Handle continuous barcode scanning
+  if (request.url.startsWith('continuous-barcode://')) {
+    _handleContinuousBarcodeScanning(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  // Regular barcode requests
+  if (request.url.contains('barcode') || request.url.contains('scan')) {
+    _handleBarcodeScanning(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  if (request.url.startsWith('take-screenshot://')) {
+    _handleScreenshotRequest();
+    return NavigationDecision.prevent;
+  }
+
+  // Image save requests
+  if (request.url.startsWith('save-image://')) {
+    _handleImageSaveRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  if (request.url.startsWith('save-pdf://')) {
+    _handlePdfSaveRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  if (request.url.startsWith('alert://') ||
+      request.url.startsWith('confirm://') ||
+      request.url.startsWith('prompt://')) {
+    _handleAlertRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+
+  return NavigationDecision.navigate;
+}
+void _handleContinuousBarcodeScanning(String url) {
+  debugPrint("Continuous barcode scanning triggered: $url");
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (context) => BarcodeScannerPage(
+        isContinuous: true, // Always continuous for this URL
+        onBarcodeScanned: (String barcode) {
+          _handleContinuousBarcodeResult(barcode);
+        },
+      ),
+    ),
+  );
+}
+
+// 6. Add new method for continuous barcode results
+void _handleContinuousBarcodeResult(String barcode) {
+  debugPrint("Continuous barcode scanned: $barcode");
+
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  controller.runJavaScript('''
+    if (typeof getBarcodeContinuous === 'function') {
+      getBarcodeContinuous("$barcode");
+      console.log("Called getBarcodeContinuous() with: $barcode");
+    } else if (typeof window.handleContinuousBarcodeResult === 'function') {
+      window.handleContinuousBarcodeResult("$barcode");
+      console.log("Called handleContinuousBarcodeResult with: $barcode");
+    } else {
+      // Fallback to regular barcode handling
+      if (typeof getBarcode === 'function') {
+        getBarcode("$barcode");
+        console.log("Called getBarcode() (fallback) with: $barcode");
+      } else {
+        var event = new CustomEvent('continuousBarcodeScanned', { 
+          detail: { result: "$barcode" } 
+        });
+        document.dispatchEvent(event);
+        console.log("Dispatched continuousBarcodeScanned event");
+      }
+    }
+  ''');
+}
   void _handleExternalNavigation(String url) {
     debugPrint('🌐 External navigation detected in MainScreen: $url');
 
@@ -1111,26 +1166,110 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
   ''');
   }
 
-  void _handleLocationRequest() {
-    debugPrint('🌍 Location requested from WebView');
 
-    final controller = _controllerManager.getController(
-      _selectedIndex,
-      '',
-      context,
+void _handleLocationRequest() async {
+  debugPrint('🌍 Location requested from WebView');
+
+  try {
+    // Check location permission
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('❌ Location permissions denied');
+        _handleLocationError('Location permissions denied');
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('❌ Location permissions permanently denied');
+      _handleLocationError('Location permissions permanently denied');
+      return;
+    }
+
+    // Check if location services are enabled
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('❌ Location services are disabled');
+      _handleLocationError('Location services are disabled');
+      return;
+    }
+
+    debugPrint('📍 Getting current location...');
+    
+    // Get current position
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+      timeLimit: const Duration(seconds: 15),
     );
 
-    // This will trigger the location service through JavaScript
-    controller.runJavaScript('''
-      if (window.LocationManager && window.LocationManager.postMessage) {
-        window.LocationManager.postMessage('getCurrentLocation');
-        console.log("✅ Location request forwarded to LocationManager");
-      } else {
-        console.log("❌ LocationManager not found");
-      }
-    ''');
-  }
+    debugPrint('✅ Location obtained: ${position.latitude}, ${position.longitude}');
+    
+    // Call the result handler with the coordinates
+    _handleLocationResult(position.latitude, position.longitude);
 
+  } catch (e) {
+    debugPrint('❌ Error getting location: $e');
+    _handleLocationError('Failed to get location: ${e.toString()}');
+  }
+}
+void _handleLocationResult(double latitude, double longitude) {
+  debugPrint("Location obtained: lat=$latitude, lng=$longitude");
+
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  controller.runJavaScript('''
+    if (typeof getLocation === 'function') {
+      getLocation($latitude, $longitude);
+      console.log("Called getLocation() with: lat=$latitude, lng=$longitude");
+    } else if (typeof window.handleLocationResult === 'function') {
+      window.handleLocationResult($latitude, $longitude);
+      console.log("Called handleLocationResult with: lat=$latitude, lng=$longitude");
+    } else {
+      var event = new CustomEvent('locationReceived', { 
+        detail: { 
+          latitude: $latitude, 
+          longitude: $longitude 
+        } 
+      });
+      document.dispatchEvent(event);
+      console.log("Dispatched locationReceived event");
+    }
+  ''');
+}
+
+void _handleLocationError(String error) {
+  debugPrint('❌ Location error: $error');
+
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  controller.runJavaScript('''
+    if (typeof getLocationError === 'function') {
+      getLocationError("$error");
+      console.log("Called getLocationError() with: $error");
+    } else if (typeof window.handleLocationError === 'function') {
+      window.handleLocationError("$error");
+      console.log("Called handleLocationError with: $error");
+    } else {
+      var event = new CustomEvent('locationError', { 
+        detail: { 
+          error: "$error" 
+        } 
+      });
+      document.dispatchEvent(event);
+      console.log("Dispatched locationError event");
+    }
+  ''');
+}
   void _handleLogoutRequest() {
     debugPrint('🚪 Logout requested from WebView');
     _performLogout();
@@ -1177,22 +1316,57 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
       }
     }
   }
+void _handleThemeChangeRequest(String url) {
+  String themeMode = 'system';
 
-  void _handleThemeChangeRequest(String url) {
-    String themeMode = 'system';
-
-    if (url.startsWith('dark-mode://')) {
-      themeMode = 'dark';
-    } else if (url.startsWith('light-mode://')) {
-      themeMode = 'light';
-    } else if (url.startsWith('system-mode://')) {
-      themeMode = 'system';
-    }
-
-    final themeService = Provider.of<ThemeService>(context, listen: false);
-    themeService.updateThemeMode(themeMode);
+  if (url.startsWith('dark-mode://')) {
+    themeMode = 'dark';
+  } else if (url.startsWith('light-mode://')) {
+    themeMode = 'light';
+  } else if (url.startsWith('system-mode://')) {
+    themeMode = 'system';
   }
 
+  final themeService = Provider.of<ThemeService>(context, listen: false);
+  themeService.updateThemeMode(themeMode);
+
+  // NEW: Call JavaScript functions for theme changes
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  if (themeMode == 'dark') {
+    controller.runJavaScript('''
+      if (typeof setDarkMode === 'function') {
+        setDarkMode();
+        console.log("Called setDarkMode()");
+      } else if (typeof window.handleThemeChange === 'function') {
+        window.handleThemeChange('dark');
+        console.log("Called handleThemeChange with: dark");
+      } else {
+        var event = new CustomEvent('themeChanged', { detail: { theme: 'dark' } });
+        document.dispatchEvent(event);
+        console.log("Dispatched themeChanged event for dark mode");
+      }
+    ''');
+  } else if (themeMode == 'light') {
+    controller.runJavaScript('''
+      if (typeof setLightMode === 'function') {
+        setLightMode();
+        console.log("Called setLightMode()");
+      } else if (typeof window.handleThemeChange === 'function') {
+        window.handleThemeChange('light');
+        console.log("Called handleThemeChange with: light");
+      } else {
+        var event = new CustomEvent('themeChanged', { detail: { theme: 'light' } });
+        document.dispatchEvent(event);
+        console.log("Dispatched themeChanged event for light mode");
+      }
+    ''');
+  }
+}
   void _handleNewWebNavigation(String url) {
     // FIXED: Changed default URL to mobile.erpforever.com
     String targetUrl = 'https://mobile.erpforever.com/';

@@ -1352,7 +1352,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
   Widget _buildSheetHeader(BuildContext context, bool isDarkMode) {
     return Container(
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.grey[900] : Colors.grey[50],
+        color: isDarkMode ? Colors.grey[900] : Colors.white,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
@@ -1360,6 +1360,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
             margin: const EdgeInsets.only(top: 12),
@@ -1370,9 +1371,8 @@ class _WebViewSheetState extends State<WebViewSheet> {
               borderRadius: BorderRadius.circular(2.5),
             ),
           ),
-
           Padding(
-            padding: const EdgeInsets.fromLTRB(10, 4, 8, 4),
+            padding: const EdgeInsets.fromLTRB(10, 0, 8, 4),
             child: Row(
               children: [
                 if (_canGoBack)
@@ -1385,10 +1385,7 @@ class _WebViewSheetState extends State<WebViewSheet> {
                     onPressed: _goBack,
                     tooltip: 'Back',
                   ),
-
                 const SizedBox(width: 8),
-
-                // Title
                 Expanded(
                   child: Text(
                     widget.title,
@@ -1401,8 +1398,6 @@ class _WebViewSheetState extends State<WebViewSheet> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-
-                // Close button
                 IconButton(
                   icon: Icon(
                     Icons.close,
@@ -1411,7 +1406,6 @@ class _WebViewSheetState extends State<WebViewSheet> {
                   ),
                   onPressed: () {
                     _clearControllerReference();
-                    // FIXED: Use stored reference instead of Provider.of
                     if (_refreshManager != null) {
                       _refreshManager!.setSheetOpen(false);
                       debugPrint(

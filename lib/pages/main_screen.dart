@@ -16,7 +16,6 @@ import 'package:ERPForever/pages/login_page.dart';
 import 'package:ERPForever/services/alert_service.dart';
 import 'package:ERPForever/services/refresh_state_manager.dart';
 
-
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -68,7 +67,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           return const Scaffold(
             body: Center(
               child: LoadingWidget(message: "Loading configuration..."),
-              
             ),
           );
         }
@@ -144,61 +142,67 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return _buildRefreshableWebViewContent(index, mainIcon);
   }
 
-Widget _buildRefreshableWebViewContent(int index, mainIcon) {
-  return Consumer<RefreshStateManager>(
-    builder: (context, refreshManager, child) {
-      // Cache the refresh state to avoid calling shouldAllowRefresh during build
-      final isRefreshAllowed = refreshManager.isRefreshEnabled;
-      
-      return NotificationListener<ScrollNotification>(
-        onNotification: (scrollNotification) => false,
-        child: RefreshIndicator(
-          // Use cached value instead of method call
-          onRefresh: isRefreshAllowed
-              ? () => _refreshWebView(index)
-              : () async {
-                  debugPrint('🚫 Refresh blocked - sheet is open');
-                  return;
-                },
-          child: SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height -
-                  kToolbarHeight -
-                  kBottomNavigationBarHeight -
-                  MediaQuery.of(context).padding.top,
-              child: Stack(
-                children: [
-                  _buildWebView(index, mainIcon.link),
-                  if (_loadingStates[index] == true ||
-                      _isRefreshingStates[index] == true)
-                    const LoadingWidget(),
-                  // Use cached value for refresh indicator visibility
-                  if (_isAtTopStates[index] == true &&
-                      _isRefreshingStates[index] == false &&
-                      isRefreshAllowed) // Use cached value
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(height: 2, color: Colors.transparent),
-                    ),
-                ],
+  Widget _buildRefreshableWebViewContent(int index, mainIcon) {
+    return Consumer<RefreshStateManager>(
+      builder: (context, refreshManager, child) {
+        // Cache the refresh state to avoid calling shouldAllowRefresh during build
+        final isRefreshAllowed = refreshManager.isRefreshEnabled;
+
+        return NotificationListener<ScrollNotification>(
+          onNotification: (scrollNotification) => false,
+          child: RefreshIndicator(
+            // Use cached value instead of method call
+            onRefresh:
+                isRefreshAllowed
+                    ? () => _refreshWebView(index)
+                    : () async {
+                      debugPrint('🚫 Refresh blocked - sheet is open');
+                      return;
+                    },
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              child: SizedBox(
+                height:
+                    MediaQuery.of(context).size.height -
+                    kToolbarHeight -
+                    kBottomNavigationBarHeight -
+                    MediaQuery.of(context).padding.top,
+                child: Stack(
+                  children: [
+                    _buildWebView(index, mainIcon.link),
+                    if (_loadingStates[index] == true ||
+                        _isRefreshingStates[index] == true)
+                      const LoadingWidget(),
+                    // Use cached value for refresh indicator visibility
+                    if (_isAtTopStates[index] == true &&
+                        _isRefreshingStates[index] == false &&
+                        isRefreshAllowed) // Use cached value
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(height: 2, color: Colors.transparent),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
-}
-  Future<void> _refreshWebView(int index) async {
-      final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
-  
-  if (!refreshManager.shouldAllowRefresh()) {
-    debugPrint('🚫 Refresh blocked by RefreshStateManager');
-    return;
+        );
+      },
+    );
   }
+
+  Future<void> _refreshWebView(int index) async {
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
+    );
+
+    if (!refreshManager.shouldAllowRefresh()) {
+      debugPrint('🚫 Refresh blocked by RefreshStateManager');
+      return;
+    }
     if (_isRefreshingStates[index] == true)
       return; // Prevent multiple refreshes
 
@@ -302,13 +306,15 @@ Widget _buildRefreshableWebViewContent(int index, mainIcon) {
     return WebViewWidget(controller: controller);
   }
 
-void _injectNativePullToRefresh(WebViewController controller, int index) {
-  try {
-    final refreshChannelName = _refreshChannelNames[index]!;
+  void _injectNativePullToRefresh(WebViewController controller, int index) {
+    try {
+      final refreshChannelName = _refreshChannelNames[index]!;
 
-    debugPrint('🔄 Injecting STRICT pull-to-refresh (must pull to END) for tab $index...');
+      debugPrint(
+        '🔄 Injecting STRICT pull-to-refresh (must pull to END) for tab $index...',
+      );
 
-    controller.runJavaScript('''
+      controller.runJavaScript('''
     (function() {
       console.log('🔄 Starting STRICT pull-to-refresh (must complete pull) for main screen tab $index...');
       
@@ -641,18 +647,26 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
     })();
     ''');
 
-    debugPrint('✅ STRICT pull-to-refresh injected for main screen tab $index');
-  } catch (e) {
-    debugPrint('❌ Error injecting STRICT refresh for main screen tab $index: $e');
+      debugPrint(
+        '✅ STRICT pull-to-refresh injected for main screen tab $index',
+      );
+    } catch (e) {
+      debugPrint(
+        '❌ Error injecting STRICT refresh for main screen tab $index: $e',
+      );
+    }
   }
-}
+
   Future<void> _handleJavaScriptRefresh(int index) async {
-     final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
-  
-  if (!refreshManager.shouldAllowRefresh()) {
-    debugPrint('🚫 JavaScript refresh blocked - sheet is open');
-    return;
-  }
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
+    );
+
+    if (!refreshManager.shouldAllowRefresh()) {
+      debugPrint('🚫 JavaScript refresh blocked - sheet is open');
+      return;
+    }
 
     debugPrint('🔄 Handling JavaScript refresh request for tab $index');
 
@@ -664,7 +678,7 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
     try {
       setState(() {
         _isRefreshingStates[index] = true;
-        _loadingStates[index] = true; 
+        _loadingStates[index] = true;
       });
 
       final controller = _controllerManager.getController(index, '', context);
@@ -763,125 +777,136 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
           console.log('✅ Scroll monitoring initialized for tab $index');
         })();
       ''');
+
+      controller.runJavaScript('''
+    document.body.style.marginBottom = '85px';
+    document.body.style.boxSizing = 'border-box';
+    console.log('✅ Bottom margin added for navigation bar');
+  ''');
     } catch (e) {
       debugPrint('❌ Error adding JavaScript channel for tab $index: $e');
       _channelAdded[index] = false;
     }
-      final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
-  refreshManager.registerController(controller);
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
+    );
+    refreshManager.registerController(controller);
   }
 
-NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-  debugPrint("Navigation request: ${request.url}");
+  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+    debugPrint("Navigation request: ${request.url}");
 
-  // NEW: Handle external URLs with ?external=1 parameter
-  if (request.url.contains('?external=1')) {
-    _handleExternalNavigation(request.url);
-    return NavigationDecision.prevent;
+    // NEW: Handle external URLs with ?external=1 parameter
+    if (request.url.contains('?external=1')) {
+      _handleExternalNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // Theme requests
+    if (request.url.startsWith('dark-mode://') ||
+        request.url.startsWith('light-mode://') ||
+        request.url.startsWith('system-mode://')) {
+      _handleThemeChangeRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // Auth requests
+    if (request.url.startsWith('logout://')) {
+      _handleLogoutRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Location requests
+    if (request.url.startsWith('get-location://')) {
+      _handleLocationRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Contacts requests
+    if (request.url.startsWith('get-contacts://')) {
+      _handleContactsRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Other navigation requests
+    if (request.url.startsWith('new-web://')) {
+      _handleNewWebNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('new-sheet://')) {
+      _handleSheetNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // NEW: Handle continuous barcode scanning
+    if (request.url.startsWith('continuous-barcode://')) {
+      _handleContinuousBarcodeScanning(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    // Regular barcode requests
+    if (request.url.contains('barcode') || request.url.contains('scan')) {
+      _handleBarcodeScanning(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('take-screenshot://')) {
+      _handleScreenshotRequest();
+      return NavigationDecision.prevent;
+    }
+
+    // Image save requests
+    if (request.url.startsWith('save-image://')) {
+      _handleImageSaveRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('save-pdf://')) {
+      _handlePdfSaveRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    if (request.url.startsWith('alert://') ||
+        request.url.startsWith('confirm://') ||
+        request.url.startsWith('prompt://')) {
+      _handleAlertRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+
+    return NavigationDecision.navigate;
   }
 
-  // Theme requests
-  if (request.url.startsWith('dark-mode://') ||
-      request.url.startsWith('light-mode://') ||
-      request.url.startsWith('system-mode://')) {
-    _handleThemeChangeRequest(request.url);
-    return NavigationDecision.prevent;
-  }
+  void _handleContinuousBarcodeScanning(String url) {
+    debugPrint("Continuous barcode scanning triggered: $url");
 
-  // Auth requests
-  if (request.url.startsWith('logout://')) {
-    _handleLogoutRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Location requests
-  if (request.url.startsWith('get-location://')) {
-    _handleLocationRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Contacts requests
-  if (request.url.startsWith('get-contacts://')) {
-    _handleContactsRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Other navigation requests
-  if (request.url.startsWith('new-web://')) {
-    _handleNewWebNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('new-sheet://')) {
-    _handleSheetNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // NEW: Handle continuous barcode scanning
-  if (request.url.startsWith('continuous-barcode://')) {
-    _handleContinuousBarcodeScanning(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  // Regular barcode requests
-  if (request.url.contains('barcode') || request.url.contains('scan')) {
-    _handleBarcodeScanning(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('take-screenshot://')) {
-    _handleScreenshotRequest();
-    return NavigationDecision.prevent;
-  }
-
-  // Image save requests
-  if (request.url.startsWith('save-image://')) {
-    _handleImageSaveRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('save-pdf://')) {
-    _handlePdfSaveRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  if (request.url.startsWith('alert://') ||
-      request.url.startsWith('confirm://') ||
-      request.url.startsWith('prompt://')) {
-    _handleAlertRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-
-  return NavigationDecision.navigate;
-}
-void _handleContinuousBarcodeScanning(String url) {
-  debugPrint("Continuous barcode scanning triggered: $url");
-
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      fullscreenDialog: true,
-      builder: (context) => BarcodeScannerPage(
-        isContinuous: true, // Always continuous for this URL
-        onBarcodeScanned: (String barcode) {
-          _handleContinuousBarcodeResult(barcode);
-        },
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder:
+            (context) => BarcodeScannerPage(
+              isContinuous: true, // Always continuous for this URL
+              onBarcodeScanned: (String barcode) {
+                _handleContinuousBarcodeResult(barcode);
+              },
+            ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-// 6. Add new method for continuous barcode results
-void _handleContinuousBarcodeResult(String barcode) {
-  debugPrint("Continuous barcode scanned: $barcode");
+  // 6. Add new method for continuous barcode results
+  void _handleContinuousBarcodeResult(String barcode) {
+    debugPrint("Continuous barcode scanned: $barcode");
 
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     if (typeof getBarcodeContinuous === 'function') {
       getBarcodeContinuous("$barcode");
       console.log("Called getBarcodeContinuous() with: $barcode");
@@ -902,7 +927,8 @@ void _handleContinuousBarcodeResult(String barcode) {
       }
     }
   ''');
-}
+  }
+
   void _handleExternalNavigation(String url) {
     debugPrint('🌐 External navigation detected in MainScreen: $url');
 
@@ -1166,64 +1192,65 @@ void _handleContinuousBarcodeResult(String barcode) {
   ''');
   }
 
+  void _handleLocationRequest() async {
+    debugPrint('🌍 Location requested from WebView');
 
-void _handleLocationRequest() async {
-  debugPrint('🌍 Location requested from WebView');
-
-  try {
-    // Check location permission
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+    try {
+      // Check location permission
+      LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        debugPrint('❌ Location permissions denied');
-        _handleLocationError('Location permissions denied');
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('❌ Location permissions denied');
+          _handleLocationError('Location permissions denied');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('❌ Location permissions permanently denied');
+        _handleLocationError('Location permissions permanently denied');
         return;
       }
-    }
 
-    if (permission == LocationPermission.deniedForever) {
-      debugPrint('❌ Location permissions permanently denied');
-      _handleLocationError('Location permissions permanently denied');
-      return;
-    }
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('❌ Location services are disabled');
+        _handleLocationError('Location services are disabled');
+        return;
+      }
 
-    // Check if location services are enabled
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      debugPrint('❌ Location services are disabled');
-      _handleLocationError('Location services are disabled');
-      return;
-    }
+      debugPrint('📍 Getting current location...');
 
-    debugPrint('📍 Getting current location...');
-    
-    // Get current position
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: const Duration(seconds: 15),
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+
+      debugPrint(
+        '✅ Location obtained: ${position.latitude}, ${position.longitude}',
+      );
+
+      // Call the result handler with the coordinates
+      _handleLocationResult(position.latitude, position.longitude);
+    } catch (e) {
+      debugPrint('❌ Error getting location: $e');
+      _handleLocationError('Failed to get location: ${e.toString()}');
+    }
+  }
+
+  void _handleLocationResult(double latitude, double longitude) {
+    debugPrint("Location obtained: lat=$latitude, lng=$longitude");
+
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
     );
 
-    debugPrint('✅ Location obtained: ${position.latitude}, ${position.longitude}');
-    
-    // Call the result handler with the coordinates
-    _handleLocationResult(position.latitude, position.longitude);
-
-  } catch (e) {
-    debugPrint('❌ Error getting location: $e');
-    _handleLocationError('Failed to get location: ${e.toString()}');
-  }
-}
-void _handleLocationResult(double latitude, double longitude) {
-  debugPrint("Location obtained: lat=$latitude, lng=$longitude");
-
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
-
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     if (typeof getLocation === 'function') {
       getLocation($latitude, $longitude);
       console.log("Called getLocation() with: lat=$latitude, lng=$longitude");
@@ -1241,18 +1268,18 @@ void _handleLocationResult(double latitude, double longitude) {
       console.log("Dispatched locationReceived event");
     }
   ''');
-}
+  }
 
-void _handleLocationError(String error) {
-  debugPrint('❌ Location error: $error');
+  void _handleLocationError(String error) {
+    debugPrint('❌ Location error: $error');
 
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     if (typeof getLocationError === 'function') {
       getLocationError("$error");
       console.log("Called getLocationError() with: $error");
@@ -1269,7 +1296,8 @@ void _handleLocationError(String error) {
       console.log("Dispatched locationError event");
     }
   ''');
-}
+  }
+
   void _handleLogoutRequest() {
     debugPrint('🚪 Logout requested from WebView');
     _performLogout();
@@ -1316,29 +1344,30 @@ void _handleLocationError(String error) {
       }
     }
   }
-void _handleThemeChangeRequest(String url) {
-  String themeMode = 'system';
 
-  if (url.startsWith('dark-mode://')) {
-    themeMode = 'dark';
-  } else if (url.startsWith('light-mode://')) {
-    themeMode = 'light';
-  } else if (url.startsWith('system-mode://')) {
-    themeMode = 'system';
-  }
+  void _handleThemeChangeRequest(String url) {
+    String themeMode = 'system';
 
-  final themeService = Provider.of<ThemeService>(context, listen: false);
-  themeService.updateThemeMode(themeMode);
+    if (url.startsWith('dark-mode://')) {
+      themeMode = 'dark';
+    } else if (url.startsWith('light-mode://')) {
+      themeMode = 'light';
+    } else if (url.startsWith('system-mode://')) {
+      themeMode = 'system';
+    }
 
-  // NEW: Call JavaScript functions for theme changes
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    final themeService = Provider.of<ThemeService>(context, listen: false);
+    themeService.updateThemeMode(themeMode);
 
-  if (themeMode == 'dark') {
-    controller.runJavaScript('''
+    // NEW: Call JavaScript functions for theme changes
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
+
+    if (themeMode == 'dark') {
+      controller.runJavaScript('''
       if (typeof setDarkMode === 'function') {
         setDarkMode();
         console.log("Called setDarkMode()");
@@ -1351,8 +1380,8 @@ void _handleThemeChangeRequest(String url) {
         console.log("Dispatched themeChanged event for dark mode");
       }
     ''');
-  } else if (themeMode == 'light') {
-    controller.runJavaScript('''
+    } else if (themeMode == 'light') {
+      controller.runJavaScript('''
       if (typeof setLightMode === 'function') {
         setLightMode();
         console.log("Called setLightMode()");
@@ -1365,8 +1394,9 @@ void _handleThemeChangeRequest(String url) {
         console.log("Dispatched themeChanged event for light mode");
       }
     ''');
+    }
   }
-}
+
   void _handleNewWebNavigation(String url) {
     // FIXED: Changed default URL to mobile.erpforever.com
     String targetUrl = 'https://mobile.erpforever.com/';

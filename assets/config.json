@@ -1,36 +1,36 @@
 {
+  "lang": "en",
   "theme": {
     "primaryColor": "#0078d7",
     "lightBackground": "#F5F5F5",
     "darkBackground": "#121212",
     "darkSurface": "#1E1E1E",
-    "defaultMode": "system",
-    "direction": "LTR"
+    "defaultMode": "system"
   },
   "main_icons": [
     {
-      "title": "اول",
+      "title": "First",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
-      "link": "https://mobile.erpforever.com/",
+      "link": "https://erpforever.com/mobile",
       "link_type": "regular_webview",
       "header_icons": [
-        { 
+        {
           "title": "First",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-          "link": "https://mobile.erpforever.com/",
+          "link": "https://erpforever.com/mobile",
           "link_type": "sheet_webview"
         },
         {
           "title": "First",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-          "link": "https://mobile.erpforever.com/",
+          "link": "https://erpforever.com/mobile",
           "link_type": "regular_webview"
         }
       ]
     },
-    { 
-      "title": "ثاني",
+    {
+      "title": "Second",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
       "link": "https://mujeer.com/admin",
@@ -40,14 +40,14 @@
       "title": "Third",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
-      "link": "https://mobile.erpforever.com/",
+      "link": "https://mujeer.com/admin",
       "link_type": "sheet_webview"
     },
     {
       "title": "Fourth",
-      "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-      "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
-      "link": "https://mujeer.com/admin",
+      "icon-line": "https://cdn-icons-png.flaticon.com/128/16806/16806607.png",
+      "icon-solid": "https://cdn-icons-png.flaticon.com/128/15511/15511514.png",
+      "link": "https://erpforever.com/chatbot",
       "link_type": "regular_webview"
     }
   ],
@@ -56,13 +56,13 @@
       "title": "Sheet First",
       "icon-line": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
       "icon-solid": "https://cdn-icons-png.flaticon.com/128/1946/1946436.png",
-      "link": "https://mobile.erpforever.com/",
+      "link": "https://erpforever.com/mobile",
       "link_type": "regular_webview",
       "header_icons": [
         {
           "title": "Sheet First Sub",
           "icon": "https://cdn-icons-png.flaticon.com/128/1946/1946488.png",
-          "link": "https://mobile.erpforever.com/",
+          "link": "https://erpforever.com/mobile",
           "link_type": "sheet_webview"
         }
       ]

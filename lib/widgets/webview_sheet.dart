@@ -1,8 +1,11 @@
 // lib/widgets/webview_sheet.dart - FIXED with proper context management like WebViewPage
 import 'dart:async';
+import 'package:ERPForever/pages/barcode_scanner_page.dart';
 import 'package:ERPForever/pages/webview_page.dart';
 import 'package:ERPForever/services/refresh_state_manager.dart';
+import 'package:ERPForever/services/theme_service.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -158,14 +161,14 @@ void didChangeDependencies() {
   }
 
   // ADD THIS METHOD - Same as WebViewPage
-  NavigationDecision _handleNavigationRequest(NavigationRequest request) {
-    debugPrint('🔍 Handling navigation in WebViewSheet: ${request.url}');
+ NavigationDecision _handleNavigationRequest(NavigationRequest request) {
+  debugPrint('🔍 Handling navigation in WebViewPage: ${request.url}');
 
-    // PRIORITY: Handle external URLs with ?external=1 parameter
-    if (request.url.contains('?external=1')) {
-      _handleExternalNavigation(request.url);
-      return NavigationDecision.prevent;
-    }
+  // PRIORITY: Handle external URLs with ?external=1 parameter
+  if (request.url.contains('?external=1')) {
+    _handleExternalNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
 
     // Handle new-web:// requests - PREVENT and open new WebView layer
     if (request.url.startsWith('new-web://')) {

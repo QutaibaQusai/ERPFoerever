@@ -74,7 +74,6 @@ WebViewController? get _currentController {
       builder: (context) => WebViewSheet(url: url, title: title),
     );
   }
-
 WebViewController createController(String url, [BuildContext? context]) {
   debugPrint('🌐 Creating WebView controller for: $url');
 
@@ -151,7 +150,7 @@ WebViewController createController(String url, [BuildContext? context]) {
         _handleAlertRequest(message.message);
       },
     )
-    ..setNavigationDelegate(
+  ..setNavigationDelegate(
       NavigationDelegate(
         onPageStarted: (String url) {
           debugPrint('⏳ Page started loading: $url');
@@ -185,22 +184,23 @@ WebViewController createController(String url, [BuildContext? context]) {
     ..setUserAgent('ERPForever-Flutter-App');
 
   // NEW: Load URL with app data
-  _loadUrlWithAppData(controller, url);
+  _loadUrlWithAppData(controller, url, context);
 
   return controller;
 }
 
-// ADD this new method to your WebViewService class:
-Future<void> _loadUrlWithAppData(WebViewController controller, String originalUrl) async {
+Future<void> _loadUrlWithAppData(WebViewController controller, String originalUrl, [BuildContext? context]) async {
   try {
-    // Collect app data
-    final appData = await AppDataService().collectDataForServer();
+    debugPrint('📊 Collecting enhanced app data with language and theme...');
+    
+    // Collect app data with context for better theme detection
+    final appData = await AppDataService().collectDataForServer(context);
     
     // Build enhanced URL with app data
     final enhancedUrl = _buildEnhancedUrl(originalUrl, appData);
     
     // Build custom headers with app data
-    final headers = _buildAppDataHeaders(appData);
+    final headers = _buildAppDataHeaders(appData, context);
     
     // Load the enhanced URL with custom headers
     await controller.loadRequest(
@@ -208,16 +208,15 @@ Future<void> _loadUrlWithAppData(WebViewController controller, String originalUr
       headers: headers,
     );
     
-    debugPrint('✅ Loaded URL with app data: $enhancedUrl');
+    debugPrint('✅ Loaded URL with enhanced app data including language and theme');
+    debugPrint('🌍 Language: ${appData['current_language']}, Theme: ${appData['current_theme_mode']}');
     
   } catch (e) {
-    debugPrint('❌ Error loading URL with app data: $e');
+    debugPrint('❌ Error loading URL with enhanced app data: $e');
     // Fallback to original URL
     controller.loadRequest(Uri.parse(originalUrl));
   }
 }
-
-// ADD this new method to your WebViewService class:
 String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
   try {
     final uri = Uri.parse(baseUrl);
@@ -229,6 +228,9 @@ String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
       'app_version': appData['app_version'] ?? 'unknown',
       'platform': appData['platform'] ?? 'unknown',
       'device_model': appData['device_model'] ?? 'unknown',
+      'current_language': appData['current_language'] ?? 'en',
+      'current_theme': appData['current_theme_mode'] ?? 'system',
+      'text_direction': appData['text_direction'] ?? 'LTR',
       'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
     });
 
@@ -240,9 +242,8 @@ String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
     return baseUrl;
   }
 }
-
 // ADD this new method to your WebViewService class:
-Map<String, String> _buildAppDataHeaders(Map<String, String> appData) {
+Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildContext? context]) {
   final headers = <String, String>{
     'User-Agent': 'ERPForever-Flutter-App/1.0',
     'X-App-Source': 'flutter_mobile',
@@ -250,6 +251,12 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData) {
     'X-Platform': appData['platform'] ?? 'unknown',
     'X-Device-Model': appData['device_model'] ?? 'unknown',
     'X-App-Timestamp': DateTime.now().toIso8601String(),
+    
+    // NEW: Language and theme headers
+    'X-Current-Language': appData['current_language'] ?? 'en',
+    'X-Current-Theme': appData['current_theme_mode'] ?? 'system',
+    'X-Text-Direction': appData['text_direction'] ?? 'LTR',
+    'X-Theme-Setting': appData['theme_setting'] ?? 'system',
   };
 
   // Add important data as custom headers
@@ -259,9 +266,21 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData) {
   if (appData['build_number'] != null) {
     headers['X-Build-Number'] = appData['build_number']!;
   }
+  if (appData['timezone'] != null) {
+    headers['X-Timezone'] = appData['timezone']!;
+  }
+
+  // Add compact headers using the helper method
+  try {
+    final compactHeaders = AppDataService().getCompactDataForHeaders(context);
+    headers.addAll(compactHeaders);
+  } catch (e) {
+    debugPrint('❌ Error adding compact headers: $e');
+  }
 
   return headers;
 }
+
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
 

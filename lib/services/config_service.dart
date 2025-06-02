@@ -72,30 +72,30 @@ class ConfigService extends ChangeNotifier {
     debugPrint('🔄 Configuration updated at runtime');
   }
 
-  void _loadDefaultConfig() {
-    _config = AppConfigModel(
-      theme: ThemeConfigModel(
-        primaryColor: '#0078d7',
-        lightBackground: '#F5F5F5',
-        darkBackground: '#121212',
-        darkSurface: '#1E1E1E',
-        defaultMode: 'system',
-        direction: 'LTR', // Default direction
+void _loadDefaultConfig() {
+  _config = AppConfigModel(
+    lang: 'en', // NEW: Default language
+    theme: ThemeConfigModel(
+      primaryColor: '#0078d7',
+      lightBackground: '#F5F5F5',
+      darkBackground: '#121212',
+      darkSurface: '#1E1E1E',
+      defaultMode: 'system',
+      direction: 'LTR', // Default direction
+    ),
+    mainIcons: [
+      MainIconModel(
+        title: 'Home',
+        iconLine: 'https://cdn-icons-png.flaticon.com/128/1946/1946488.png',
+        iconSolid: 'https://cdn-icons-png.flaticon.com/128/1946/1946436.png',
+        link: 'https://erpforever.com/mobile',
+        linkType: 'regular_webview',
       ),
-      mainIcons: [
-        MainIconModel(
-          title: 'Home',
-          iconLine: 'https://cdn-icons-png.flaticon.com/128/1946/1946488.png',
-          iconSolid: 'https://cdn-icons-png.flaticon.com/128/1946/1946436.png',
-          link: 'https://erpforever.com/mobile',
-          linkType: 'regular_webview',
-        ),
-      ],
-      sheetIcons: [],
-    );
-    debugPrint('⚠️ Using default configuration');
-  }
-
+    ],
+    sheetIcons: [],
+  );
+  debugPrint('⚠️ Using default configuration with language: en');
+}
   Color getColorFromHex(String hexColor) {
     return Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
   }

@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:ERPForever/services/config_service.dart';
+import 'package:ERPForever/services/theme_service.dart';
 
 class AppDataService {
   static final AppDataService _instance = AppDataService._internal();
@@ -11,7 +13,7 @@ class AppDataService {
   AppDataService._internal();
 
   /// Collect app and device data to send to server
-  Future<Map<String, String>> collectDataForServer() async {
+  Future<Map<String, String>> collectDataForServer([BuildContext? context]) async {
     try {
       final deviceInfo = DeviceInfoPlugin();
       final packageInfo = await PackageInfo.fromPlatform();
@@ -36,6 +38,59 @@ class AppDataService {
         'user_agent': 'ERPForever-Flutter-App/1.0',
       };
 
+      // Add current language from config
+      try {
+        final configService = ConfigService();
+        if (configService.config != null) {
+          // Get language directly from config.json lang property
+          data['current_language'] = configService.config!.lang;
+          data['text_direction'] = configService.config!.theme.direction;
+          debugPrint('📱 Language from config: ${data['current_language']}');
+        } else {
+          data['current_language'] = 'en'; // Default fallback
+          data['text_direction'] = 'LTR';
+          debugPrint('⚠️ Config not loaded, using default language: en');
+        }
+      } catch (e) {
+        debugPrint('❌ Error getting language from config: $e');
+        data['current_language'] = 'en'; // Default fallback
+        data['text_direction'] = 'LTR';
+      }
+
+      // Add current theme mode
+      try {
+        final themeService = ThemeService();
+        final currentThemeMode = themeService.themeMode;
+        
+        String themeString;
+        switch (currentThemeMode) {
+          case ThemeMode.light:
+            themeString = 'light';
+            break;
+          case ThemeMode.dark:
+            themeString = 'dark';
+            break;
+          case ThemeMode.system:
+          default:
+            // Detect system theme if available
+            if (context != null) {
+              final brightness = MediaQuery.of(context).platformBrightness;
+              themeString = brightness == Brightness.dark ? 'system_dark' : 'system_light';
+            } else {
+              themeString = 'system';
+            }
+            break;
+        }
+        
+        data['current_theme_mode'] = themeString;
+        data['theme_setting'] = currentThemeMode.toString().split('.').last; // light, dark, or system
+        debugPrint('🎨 Current theme mode: ${data['current_theme_mode']}');
+      } catch (e) {
+        debugPrint('❌ Error getting theme mode: $e');
+        data['current_theme_mode'] = 'system';
+        data['theme_setting'] = 'system';
+      }
+
       // Add platform-specific data
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
@@ -59,6 +114,7 @@ class AppDataService {
       }
 
       debugPrint('📊 Collected ${data.length} data fields for server');
+      debugPrint('🌍 Language: ${data['current_language']}, Theme: ${data['current_theme_mode']}');
       return data;
       
     } catch (e) {
@@ -67,7 +123,49 @@ class AppDataService {
         'error': 'Failed to collect app data',
         'timestamp': DateTime.now().toIso8601String(),
         'source': 'flutter_app',
+        'current_language': 'en', // Default fallback
+        'current_theme_mode': 'system', // Default fallback
       };
+    }
+  }
+
+  /// Get current language from config with fallback
+  String getCurrentLanguage() {
+    try {
+      final configService = ConfigService();
+      if (configService.config != null) {
+        // Get language directly from config.json lang property
+        return configService.config!.lang;
+      }
+    } catch (e) {
+      debugPrint('❌ Error getting current language: $e');
+    }
+    return 'en'; // Default fallback
+  }
+
+  /// Get current theme mode string
+  String getCurrentThemeMode([BuildContext? context]) {
+    try {
+      final themeService = ThemeService();
+      final currentThemeMode = themeService.themeMode;
+      
+      switch (currentThemeMode) {
+        case ThemeMode.light:
+          return 'light';
+        case ThemeMode.dark:
+          return 'dark';
+        case ThemeMode.system:
+        default:
+          // Detect actual system theme if context available
+          if (context != null) {
+            final brightness = MediaQuery.of(context).platformBrightness;
+            return brightness == Brightness.dark ? 'system_dark' : 'system_light';
+          }
+          return 'system';
+      }
+    } catch (e) {
+      debugPrint('❌ Error getting current theme mode: $e');
+      return 'system';
     }
   }
 
@@ -76,5 +174,26 @@ class AppDataService {
     return data.entries
         .map((entry) => '${Uri.encodeComponent(entry.key)}=${Uri.encodeComponent(entry.value)}')
         .join('&');
+  }
+
+  /// Get compact data for headers (most important fields only)
+  Map<String, String> getCompactDataForHeaders([BuildContext? context]) {
+    try {
+      return {
+        'X-App-Language': getCurrentLanguage(),
+        'X-App-Theme': getCurrentThemeMode(context),
+        'X-Text-Direction': ConfigService().config?.theme.direction ?? 'LTR',
+        'X-Platform': Platform.operatingSystem,
+        'X-App-Version': '1.0', // You can get this from PackageInfo if needed
+      };
+    } catch (e) {
+      debugPrint('❌ Error creating compact headers: $e');
+      return {
+        'X-App-Language': 'en',
+        'X-App-Theme': 'system',
+        'X-Text-Direction': 'LTR',
+        'X-Platform': Platform.operatingSystem,
+      };
+    }
   }
 }

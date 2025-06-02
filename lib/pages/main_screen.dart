@@ -300,279 +300,351 @@ Widget _buildRefreshableWebViewContent(int index, mainIcon) {
 
     return WebViewWidget(controller: controller);
   }
+
 void _injectNativePullToRefresh(WebViewController controller, int index) {
   try {
     final refreshChannelName = _refreshChannelNames[index]!;
 
-    debugPrint('✅ Injecting pull-to-refresh JavaScript for tab $index: $refreshChannelName');
+    debugPrint('🔄 Injecting STRICT pull-to-refresh (must pull to END) for tab $index...');
 
-    // REPLACE THIS ENTIRE JAVASCRIPT SECTION:
     controller.runJavaScript('''
     (function() {
-      console.log('🔄 Initializing native pull-to-refresh for main screen tab $index...');
+      console.log('🔄 Starting STRICT pull-to-refresh (must complete pull) for main screen tab $index...');
       
-      // Configuration
-      const PULL_THRESHOLD = 80;
-      const MAX_PULL_DISTANCE = 120;
+      // STRICT configuration - must pull all the way
+      const PULL_THRESHOLD = 450;  // Must pull THIS far to activate (INCREASED FOR TESTING)
+      const MIN_PULL_SPEED = 150;   // Minimum pull distance to even start
       const channelName = '$refreshChannelName';
       const tabIndex = $index;
       
-      // Clean up any existing refresh indicator
-      const existingIndicator = document.getElementById('native-refresh-indicator-main-' + tabIndex);
-      if (existingIndicator) {
-        existingIndicator.remove();
-      }
+      // Remove any existing refresh elements
+      const existing = document.getElementById('strict-refresh-main-' + tabIndex);
+      if (existing) existing.remove();
       
       // State variables
       let startY = 0;
-      let currentY = 0;
-      let pullDistance = 0;
+      let currentPull = 0;
+      let maxPull = 0;  // Track maximum pull distance
       let isPulling = false;
       let isRefreshing = false;
       let canPull = false;
-      let refreshBlocked = false; // NEW: Track if refresh is blocked
+      let hasReachedThreshold = false;  // NEW: Must reach threshold to refresh
+      let refreshBlocked = false;
       
-      // NEW: Function to check if refresh is allowed
+      // Function to check if refresh is allowed
       function isRefreshAllowed() {
         return !refreshBlocked;
       }
       
-      // NEW: Function for Flutter to update refresh state
+      // Function for Flutter to update refresh state
       window.setRefreshBlocked = function(blocked) {
         refreshBlocked = blocked;
-        console.log('🔄 Refresh state updated:', blocked ? 'BLOCKED' : 'ALLOWED');
+        console.log('🔄 Main screen tab $index refresh state updated:', blocked ? 'BLOCKED' : 'ALLOWED');
         
         if (blocked && isPulling) {
           isPulling = false;
-          pullDistance = 0;
+          currentPull = 0;
+          maxPull = 0;
           canPull = false;
-          if (refreshIndicator) {
-            refreshIndicator.style.transform = 'translateY(-120px)';
-            refreshIndicator.classList.remove('ready');
+          hasReachedThreshold = false;
+          if (refreshDiv) {
+            hideRefresh();
           }
         }
       };
       
-      // Create refresh indicator element with unique ID
-      const refreshIndicator = document.createElement('div');
-      refreshIndicator.id = 'native-refresh-indicator-main-' + tabIndex;
-      refreshIndicator.className = 'keep-fixed';
-      refreshIndicator.innerHTML = \`
-        <div class="refresh-content">
-          <div class="refresh-icon">↓</div>
-          <div class="refresh-text">Pull to refresh</div>
+      // Create simple animation-only refresh indicator
+      const refreshDiv = document.createElement('div');
+      refreshDiv.id = 'strict-refresh-main-' + tabIndex;
+      
+      // Simple circular animation only - NO TEXT
+      refreshDiv.innerHTML = \`
+        <div class="refresh-circle">
+          <svg class="refresh-svg" width="24" height="24" viewBox="0 0 24 24">
+            <circle class="refresh-progress" cx="12" cy="12" r="10" fill="none" stroke="#0078d7" stroke-width="2" 
+                    stroke-linecap="round" stroke-dasharray="63" stroke-dashoffset="63" 
+                    transform="rotate(-90 12 12)"/>
+          </svg>
         </div>
       \`;
       
-      // CSS styles for the refresh indicator
-      const style = document.createElement('style');
-      style.textContent = \`
-        #native-refresh-indicator-main-\${tabIndex} {
-          position: fixed;
-          top: -120px;
-          left: 0;
-          right: 0;
-          height: 80px;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          z-index: 9999;
-          transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+      // Simple, fixed positioning - NO BLACK AREA
+      refreshDiv.style.cssText = \`
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        opacity: 0;
+        transition: all 0.2s ease;
+        pointer-events: none;
+      \`;
+      
+      // Simple animation styles
+      const circleStyles = document.createElement('style');
+      circleStyles.innerHTML = \`
+        .refresh-circle {
+          width: 24px;
+          height: 24px;
         }
         
-        .refresh-content {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          color: white;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        .refresh-svg {
+          width: 100%;
+          height: 100%;
         }
         
-        .refresh-icon {
-          font-size: 24px;
-          margin-bottom: 4px;
-          transition: transform 0.3s ease;
+        .refresh-progress {
+          transition: stroke-dashoffset 0.1s ease-out;
         }
         
-        .refresh-text {
-          font-size: 14px;
-          font-weight: 500;
-          opacity: 0.9;
+        /* Ready state - green */
+        .refresh-ready .refresh-progress {
+          stroke: #28a745 !important;
         }
         
-        #native-refresh-indicator-main-\${tabIndex}.ready .refresh-icon {
-          transform: rotate(180deg);
+        /* Refreshing state - spinning */
+        .refresh-spinning .refresh-svg {
+          animation: simpleRefreshSpin 1s linear infinite;
         }
         
-        #native-refresh-indicator-main-\${tabIndex}.ready .refresh-text::after {
-          content: 'refresh';
+        .refresh-spinning .refresh-progress {
+          stroke: #0078d7 !important;
+          stroke-dasharray: 16;
+          stroke-dashoffset: 0;
+          animation: simpleRefreshProgress 1.2s ease-in-out infinite;
         }
         
-        #native-refresh-indicator-main-\${tabIndex}.refreshing .refresh-icon {
-          animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
+        @keyframes simpleRefreshSpin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
         
-        body {
-          overscroll-behavior-y: contain;
+        @keyframes simpleRefreshProgress {
+          0% { stroke-dasharray: 16; stroke-dashoffset: 16; }
+          50% { stroke-dasharray: 16; stroke-dashoffset: 0; }
+          100% { stroke-dasharray: 16; stroke-dashoffset: -16; }
         }
         
         @media (prefers-color-scheme: dark) {
-          #native-refresh-indicator-main-\${tabIndex} {
-            background: linear-gradient(135deg, #434343 0%, #000000 100%);
+          #strict-refresh-main-\${tabIndex} {
+            background: rgba(40,40,40,0.95) !important;
           }
         }
       \`;
       
-      document.head.appendChild(style);
-      document.body.appendChild(refreshIndicator);
+      document.head.appendChild(circleStyles);
+      document.body.appendChild(refreshDiv);
       
-      // Check if user is at the top of the page
-      function isAtPageTop() {
+      // PREVENT BLACK AREA - Fix body overflow
+      document.body.style.cssText += \`
+        overscroll-behavior-y: contain;
+        overflow-anchor: none;
+        -webkit-overflow-scrolling: touch;
+      \`;
+      
+      // Check if at top of page
+      function isAtTop() {
         const scrollTop = Math.max(
           window.pageYOffset || 0,
           document.documentElement.scrollTop || 0,
           document.body.scrollTop || 0
         );
-        return scrollTop <= 5;
+        return scrollTop <= 3;
       }
       
-      // Update refresh indicator based on pull distance
-      function updateRefreshIndicator() {
-        const progress = Math.min(pullDistance / PULL_THRESHOLD, 1);
-        const translateY = Math.min(pullDistance * 0.6, MAX_PULL_DISTANCE * 0.6);
+      // Update simple animation indicator
+      function updateRefresh(distance) {
+        const progress = Math.min(distance / PULL_THRESHOLD, 1);
         
-        refreshIndicator.style.transform = \`translateY(\${translateY}px)\`;
+        // Show indicator only when pulling
+        refreshDiv.style.opacity = progress > 0.1 ? '1' : '0';
         
-        if (pullDistance >= PULL_THRESHOLD) {
-          refreshIndicator.classList.add('ready');
-          refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to ';
+        // Update circular progress (0-100%)
+        const circleProgress = progress * 100;
+        const strokeDashoffset = 63 - (circleProgress * 0.63); // 63 is circumference
+        const progressCircle = refreshDiv.querySelector('.refresh-progress');
+        progressCircle.style.strokeDashoffset = strokeDashoffset;
+        
+        // Update color based on progress - ANIMATION ONLY
+        refreshDiv.classList.remove('refresh-ready');
+        if (progress >= 1) {
+          hasReachedThreshold = true;
+          refreshDiv.classList.add('refresh-ready');
         } else {
-          refreshIndicator.classList.remove('ready');
-          refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
+          hasReachedThreshold = false;
         }
         
-        const rotation = progress * 180;
-        refreshIndicator.querySelector('.refresh-icon').style.transform = \`rotate(\${rotation}deg)\`;
+        console.log(\`🔄 Main screen tab $index animation: \${Math.round(progress * 100)}%\`);
       }
       
-      // Start refreshing animation
-      function startRefreshing() {
-        // NEW: Check if refresh is allowed before starting
-        if (!isRefreshAllowed()) {
-          console.log('🚫 Refresh blocked - not starting refresh animation');
-          endRefreshing();
+      // Hide simple indicator
+      function hideRefresh() {
+        refreshDiv.style.opacity = '0';
+        refreshDiv.classList.remove('refresh-ready', 'refresh-spinning');
+        refreshDiv.querySelector('.refresh-progress').style.strokeDashoffset = '63';
+        hasReachedThreshold = false;
+      }
+      
+      // Start simple refreshing animation
+      function doRefresh() {
+        if (isRefreshing || !hasReachedThreshold || !isRefreshAllowed()) {
+          console.log(\`❌ Main screen tab $index refresh denied\`);
+          hideRefresh();
           return;
         }
         
+        console.log('✅ MAIN SCREEN TAB $index REFRESH TRIGGERED!');
         isRefreshing = true;
-        refreshIndicator.classList.add('refreshing');
-        refreshIndicator.querySelector('.refresh-text').textContent = 'Refreshing...';
-        refreshIndicator.querySelector('.refresh-icon').textContent = '⟳';
-        refreshIndicator.style.transform = 'translateY(80px)';
         
-        console.log('🔄 Sending refresh message via channel:', channelName);
+        // Show simple spinning animation
+        refreshDiv.classList.remove('refresh-ready');
+        refreshDiv.classList.add('refresh-spinning');
+        refreshDiv.style.opacity = '1';
         
-        if (window[channelName] && window[channelName].postMessage) {
+        // Send refresh signal
+        if (window[channelName]) {
           window[channelName].postMessage('refresh');
-          console.log('✅ Refresh message sent for tab $index');
-        } else {
-          console.error('❌ Refresh channel not found for tab $index:', channelName);
+          console.log('📤 Main screen tab $index refresh message sent');
         }
         
+        // Auto-hide after 1.5 seconds
         setTimeout(() => {
-          endRefreshing();
-        }, 2000);
+          hideRefresh();
+          isRefreshing = false;
+        }, 1500);
       }
       
-      // End refreshing animation
-      function endRefreshing() {
-        isRefreshing = false;
-        refreshIndicator.classList.remove('refreshing', 'ready');
-        refreshIndicator.style.transform = 'translateY(-120px)';
-        refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
-        refreshIndicator.querySelector('.refresh-icon').textContent = '↓';
-        refreshIndicator.querySelector('.refresh-icon').style.transform = 'rotate(0deg)';
-      }
-      
-      // Touch event handlers - NOW WITH REFRESH BLOCKING
-      function handleTouchStart(e) {
-        if (isRefreshing || !isRefreshAllowed()) return; // NEW: Check if refresh allowed
-        canPull = isAtPageTop();
-        if (!canPull) return;
-        startY = e.touches[0].clientY;
-        isPulling = false;
-        pullDistance = 0;
-      }
-      
-      function handleTouchMove(e) {
-        if (isRefreshing || !canPull || !isRefreshAllowed()) return; // NEW: Check if refresh allowed
-        currentY = e.touches[0].clientY;
-        const deltaY = currentY - startY;
+      // STRICT Touch handlers
+      document.addEventListener('touchstart', function(e) {
+        if (isRefreshing || !isRefreshAllowed()) return;
         
-        if (deltaY > 0 && isAtPageTop()) {
-          e.preventDefault();
-          isPulling = true;
-          pullDistance = Math.min(deltaY * 0.5, MAX_PULL_DISTANCE);
-          updateRefreshIndicator();
-        }
-      }
-      
-      function handleTouchEnd(e) {
-        if (isRefreshing || !isPulling || !isRefreshAllowed()) return; // NEW: Check if refresh allowed
-        
-        if (pullDistance >= PULL_THRESHOLD) {
-          startRefreshing();
-        } else {
-          refreshIndicator.style.transform = 'translateY(-120px)';
-          refreshIndicator.classList.remove('ready');
-        }
-        
-        isPulling = false;
-        pullDistance = 0;
-        canPull = false;
-      }
-      
-      // Add event listeners
-      document.addEventListener('touchstart', handleTouchStart, { passive: false });
-      document.addEventListener('touchmove', handleTouchMove, { passive: false });
-      document.addEventListener('touchend', handleTouchEnd, { passive: false });
-      
-      // Handle touch cancel
-      document.addEventListener('touchcancel', function(e) {
-        if (isPulling) {
-          refreshIndicator.style.transform = 'translateY(-120px)';
-          refreshIndicator.classList.remove('ready');
+        if (isAtTop()) {
+          canPull = true;
+          startY = e.touches[0].clientY;
+          currentPull = 0;
+          maxPull = 0;
           isPulling = false;
-          pullDistance = 0;
+          hasReachedThreshold = false;
+          console.log('👆 MAIN SCREEN TAB $index: Touch start at top - ready to pull');
+        } else {
           canPull = false;
         }
+      }, { passive: false });
+      
+      // STRICT Touch move - only show indicator after minimum pull
+      document.addEventListener('touchmove', function(e) {
+        if (!canPull || isRefreshing || !isRefreshAllowed()) return;
+        
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 0 && isAtTop()) {
+          currentPull = deltaY;
+          maxPull = Math.max(maxPull, deltaY);  // Track maximum pull reached
+          
+          // Only start showing indicator after minimum pull distance
+          if (deltaY >= MIN_PULL_SPEED) {
+            e.preventDefault(); // Prevent default scroll
+            isPulling = true;
+            updateRefresh(deltaY);
+          }
+        } else if (isPulling) {
+          // If user scrolls up or away from top, reset
+          isPulling = false;
+          hideRefresh();
+        }
+      }, { passive: false });
+      
+      // STRICT Touch end - ONLY refresh if threshold was reached
+      document.addEventListener('touchend', function(e) {
+        if (!isPulling || isRefreshing || !isRefreshAllowed()) {
+          // Reset states even if not pulling
+          isPulling = false;
+          canPull = false;
+          hasReachedThreshold = false;
+          return;
+        }
+        
+        console.log(\`🖱️ MAIN SCREEN TAB $index STRICT RELEASE:
+          - Current pull: \${Math.round(currentPull)}px
+          - Max pull reached: \${Math.round(maxPull)}px  
+          - Threshold: \${PULL_THRESHOLD}px
+          - Threshold reached: \${hasReachedThreshold}
+          - Will refresh: \${hasReachedThreshold}\`);
+        
+        if (hasReachedThreshold && maxPull >= PULL_THRESHOLD) {
+          console.log('✅ MAIN SCREEN TAB $index STRICT SUCCESS: User pulled to threshold - refreshing!');
+          doRefresh();
+        } else {
+          console.log(\`❌ MAIN SCREEN TAB $index STRICT FAIL: Not enough pull (max: \${Math.round(maxPull)}px, needed: \${PULL_THRESHOLD}px)\`);
+          hideRefresh();
+        }
+        
+        // Reset all states
+        isPulling = false;
+        canPull = false;
+        currentPull = 0;
+        maxPull = 0;
+        startY = 0;
+        hasReachedThreshold = false;
+      }, { passive: false });
+      
+      // Touch cancel - always reset
+      document.addEventListener('touchcancel', function(e) {
+        console.log('❌ MAIN SCREEN TAB $index STRICT: Touch cancelled - resetting');
+        hideRefresh();
+        isPulling = false;
+        canPull = false;
+        hasReachedThreshold = false;
+        currentPull = 0;
+        maxPull = 0;
       }, { passive: true });
       
-      console.log('✅ Native pull-to-refresh initialized successfully for main screen tab $index');
+      console.log('✅ MAIN SCREEN TAB $index STRICT pull-to-refresh ready!');
+      console.log(\`📋 MAIN SCREEN TAB $index STRICT Rules:
+        - Must be at top of page
+        - Must pull at least \${MIN_PULL_SPEED}px to start
+        - Must pull \${PULL_THRESHOLD}px to activate refresh
+        - Must RELEASE while in green state to refresh
+        - Any incomplete pull will bounce back\`);
       
-      // Expose refresh function globally
-      window.ERPForever = window.ERPForever || {};
-      window.ERPForever.triggerRefresh = function() {
-        if (!isRefreshing && isRefreshAllowed()) {
-          startRefreshing();
-        }
+      // Test function
+      window.testStrictRefreshMain = function() {
+        console.log('🧪 Testing strict refresh for main screen tab $index...');
+        hasReachedThreshold = true;
+        doRefresh();
+      };
+      
+      // Status function
+      window.getRefreshStatusMain = function() {
+        return {
+          tabIndex: $index,
+          isPulling: isPulling,
+          currentPull: currentPull,
+          maxPull: maxPull,
+          hasReachedThreshold: hasReachedThreshold,
+          isRefreshing: isRefreshing,
+          canPull: canPull,
+          refreshBlocked: refreshBlocked
+        };
       };
       
     })();
     ''');
 
-    debugPrint('✅ Native pull-to-refresh JavaScript injected for tab $index');
+    debugPrint('✅ STRICT pull-to-refresh injected for main screen tab $index');
   } catch (e) {
-    debugPrint('❌ Error injecting pull-to-refresh for tab $index: $e');
+    debugPrint('❌ Error injecting STRICT refresh for main screen tab $index: $e');
   }
-} 
+}
   Future<void> _handleJavaScriptRefresh(int index) async {
      final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
   

@@ -361,28 +361,19 @@ void didChangeDependencies() {
     }
   }
 
-  // Handle refresh triggered from JavaScript
-  Future<void> _handleJavaScriptRefresh() async {
-    debugPrint('🔄 Handling JavaScript refresh request in sheet');
+ Future<void> _handleJavaScriptRefresh() async {
+  debugPrint('🔄 Processing sheet refresh request...');
 
-    try {
-      if (mounted) {
-        setState(() {
-          _isLoading = true;
-        });
-      }
-
-      await _controller.reload();
-      debugPrint('✅ JavaScript refresh completed successfully in sheet');
-    } catch (e) {
-      debugPrint('❌ Error during JavaScript refresh in sheet: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+  try {
+    // Just reload the page - keep it simple (SAME AS WEBVIEWPAGE)
+    await _controller.reload();
+    
+    debugPrint('✅ Sheet page reloaded successfully');
+    
+  } catch (e) {
+    debugPrint('❌ Error reloading sheet page: $e');
   }
+}
 
   void _startLoadingMonitor() {
     // Monitor loading state and navigation
@@ -926,302 +917,346 @@ void didChangeDependencies() {
     console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
   ''');
   }
-
-  void _injectScrollAndRefreshMonitoring() {
-    _controller.runJavaScript('''
-      (function() {
-        console.log('🔄 Initializing enhanced scroll monitoring and pull-to-refresh in sheet...');
-        
-        // Clean up any existing refresh indicators
-        var existingIndicator = document.getElementById('native-refresh-indicator-sheet');
-        if (existingIndicator) {
-          existingIndicator.remove();
+void _injectScrollAndRefreshMonitoring() {
+  _controller.runJavaScript('''
+    (function () {
+      console.log('🔄 Starting STRICT pull-to-refresh (must complete pull) for WebViewSheet...');
+      
+      // STRICT configuration - must pull all the way
+      const PULL_THRESHOLD = 350;  // Must pull THIS far to activate
+      const MIN_PULL_SPEED = 150;   // Minimum pull distance to even start
+      const scrollChannelName = '$_channelName';
+      const refreshChannelName = '$_refreshChannelName';
+      
+      // Remove any existing refresh elements
+      const existing = document.getElementById('strict-refresh-sheet');
+      if (existing) existing.remove();
+      
+      // State variables
+      let startY = 0;
+      let currentPull = 0;
+      let maxPull = 0;  // Track maximum pull distance
+      let isPulling = false;
+      let isRefreshing = false;
+      let canPull = false;
+      let hasReachedThreshold = false;  // Must reach threshold to refresh
+      let scrollTimeout;
+      
+      // Create simple animation-only refresh indicator
+      const refreshDiv = document.createElement('div');
+      refreshDiv.id = 'strict-refresh-sheet';
+      
+      // Simple circular animation only - NO TEXT
+      refreshDiv.innerHTML = \`
+        <div class="refresh-circle">
+          <svg class="refresh-svg" width="24" height="24" viewBox="0 0 24 24">
+            <circle class="refresh-progress" cx="12" cy="12" r="10" fill="none" stroke="#0078d7" stroke-width="2" 
+                    stroke-linecap="round" stroke-dasharray="63" stroke-dashoffset="63" 
+                    transform="rotate(-90 12 12)"/>
+          </svg>
+        </div>
+      \`;
+      
+      // FIXED: Position relative to WebView content area in sheet
+      refreshDiv.style.cssText = \`
+        position: absolute;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-100px);
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.95);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        opacity: 0;
+        transition: all 0.2s ease;
+        pointer-events: none;
+      \`;
+      
+      // Simple animation styles
+      const circleStyles = document.createElement('style');
+      circleStyles.innerHTML = \`
+        .refresh-circle {
+          width: 24px;
+          height: 24px;
         }
         
-        // Scroll monitoring variables
-        let isAtTop = true;
-        let scrollTimeout;
-        const scrollChannelName = '$_channelName';
-        
-        // Pull-to-refresh configuration - matching WebViewPage
-        const PULL_THRESHOLD = 80; // Same as WebViewPage
-        const MAX_PULL_DISTANCE = 120; // Same as WebViewPage
-        const refreshChannelName = '$_refreshChannelName';
-        
-        // Pull-to-refresh state variables
-        let startY = 0;
-        let currentY = 0;
-        let pullDistance = 0;
-        let isPulling = false;
-        let isRefreshing = false;
-        let canPull = false;
-        let touchStartTime = 0;
-        
-        // Create refresh indicator element
-        const refreshIndicator = document.createElement('div');
-        refreshIndicator.id = 'native-refresh-indicator-sheet';
-        refreshIndicator.className = 'keep-fixed'; // Prevent position changes
-        refreshIndicator.innerHTML = \`
-          <div class="refresh-content">
-            <div class="refresh-icon">↓</div>
-            <div class="refresh-text">Pull to refresh</div>
-          </div>
-        \`;
-        
-        // CSS styles matching WebViewPage design
-        const style = document.createElement('style');
-        style.textContent = \`
-          #native-refresh-indicator-sheet {
-            position: fixed;
-            top: -120px;
-            left: 0;
-            right: 0;
-            height: 80px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            z-index: 9999;
-            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          
-          .refresh-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: white;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          }
-          
-          .refresh-icon {
-            font-size: 24px;
-            margin-bottom: 4px;
-            transition: transform 0.3s ease;
-          }
-          
-          .refresh-text {
-            font-size: 14px;
-            font-weight: 500;
-            opacity: 0.9;
-          }
-          
-          #native-refresh-indicator-sheet.ready .refresh-icon {
-            transform: rotate(180deg);
-          }
-          
-          #native-refresh-indicator-sheet.ready .refresh-text::after {
-            content: ' - Release to refresh';
-          }
-          
-          #native-refresh-indicator-sheet.refreshing .refresh-icon {
-            animation: spin 1s linear infinite;
-          }
-          
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          
-          body {
-            overscroll-behavior-y: contain;
-          }
-          
-          @media (prefers-color-scheme: dark) {
-            #native-refresh-indicator-sheet {
-              background: linear-gradient(135deg, #434343 0%, #000000 100%);
-            }
-          }
-        \`;
-        
-        document.head.appendChild(style);
-        document.body.appendChild(refreshIndicator);
-        
-        // Scroll monitoring - matching WebViewPage threshold
-        function checkScrollPosition() {
-          const scrollTop = Math.max(
-            window.pageYOffset || 0,
-            document.documentElement.scrollTop || 0,
-            document.body.scrollTop || 0
-          );
-          const newIsAtTop = scrollTop <= 5; // Same as WebViewPage
-          
-          if (newIsAtTop !== isAtTop) {
-            isAtTop = newIsAtTop;
-            
-            if (window[scrollChannelName] && window[scrollChannelName].postMessage) {
-              window[scrollChannelName].postMessage(isAtTop.toString());
-            }
-          }
+        .refresh-svg {
+          width: 100%;
+          height: 100%;
         }
         
-        // Check if user is at the top - matching WebViewPage
-        function isAtPageTop() {
-          const scrollTop = Math.max(
-            window.pageYOffset || 0,
-            document.documentElement.scrollTop || 0,
-            document.body.scrollTop || 0
-          );
-          return scrollTop <= 5; // Same as WebViewPage
+        .refresh-progress {
+          transition: stroke-dashoffset 0.1s ease-out;
         }
         
-        // Update refresh indicator - matching WebViewPage behavior
-        function updateRefreshIndicator() {
-          const progress = Math.min(pullDistance / PULL_THRESHOLD, 1);
-          const translateY = Math.min(pullDistance * 0.6, MAX_PULL_DISTANCE * 0.6);
-          
-          refreshIndicator.style.transform = \`translateY(\${translateY + 120}px)\`;
-          
-          if (pullDistance >= PULL_THRESHOLD) {
-            refreshIndicator.classList.add('ready');
-            refreshIndicator.querySelector('.refresh-text').textContent = 'Release to refresh';
-          } else {
-            refreshIndicator.classList.remove('ready');
-            refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
+        /* Ready state - green */
+        .refresh-ready .refresh-progress {
+          stroke: #28a745 !important;
+        }
+        
+        /* Refreshing state - spinning */
+        .refresh-spinning .refresh-svg {
+          animation: simpleRefreshSpin 1s linear infinite;
+        }
+        
+        .refresh-spinning .refresh-progress {
+          stroke: #0078d7 !important;
+          stroke-dasharray: 16;
+          stroke-dashoffset: 0;
+          animation: simpleRefreshProgress 1.2s ease-in-out infinite;
+        }
+        
+        @keyframes simpleRefreshSpin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes simpleRefreshProgress {
+          0% { stroke-dasharray: 16; stroke-dashoffset: 16; }
+          50% { stroke-dasharray: 16; stroke-dashoffset: 0; }
+          100% { stroke-dasharray: 16; stroke-dashoffset: -16; }
+        }
+        
+        @media (prefers-color-scheme: dark) {
+          #strict-refresh-sheet {
+            background: rgba(40,40,40,0.95) !important;
           }
-          
-          const rotation = progress * 180;
-          refreshIndicator.querySelector('.refresh-icon').style.transform = \`rotate(\${rotation}deg)\`;
+        }
+      \`;
+      
+      document.head.appendChild(circleStyles);
+      document.body.appendChild(refreshDiv);
+      
+      // PREVENT BLACK AREA - Fix body overflow
+      document.body.style.cssText += \`
+        overscroll-behavior-y: contain;
+        overflow-anchor: none;
+        -webkit-overflow-scrolling: touch;
+      \`;
+      
+      // Check if at top of page
+      function isAtTop() {
+        const scrollTop = Math.max(
+          window.pageYOffset || 0,
+          document.documentElement.scrollTop || 0,
+          document.body.scrollTop || 0
+        );
+        return scrollTop <= 3;
+      }
+      
+      // Update simple animation indicator - FIXED for sheet positioning
+      function updateRefresh(distance) {
+        const progress = Math.min(distance / PULL_THRESHOLD, 1);
+        
+        // Show indicator only when pulling
+        refreshDiv.style.opacity = progress > 0.1 ? '1' : '0';
+        
+        // FIXED: Move indicator down as user pulls, starting from sheet header area
+        const translateY = Math.min(distance * 0.3, 60) - 100; // Starts at -100px, moves down
+        refreshDiv.style.transform = \`translateX(-50%) translateY(\${translateY}px)\`;
+        
+        // Update circular progress (0-100%)
+        const circleProgress = progress * 100;
+        const strokeDashoffset = 63 - (circleProgress * 0.63); // 63 is circumference
+        const progressCircle = refreshDiv.querySelector('.refresh-progress');
+        progressCircle.style.strokeDashoffset = strokeDashoffset;
+        
+        // Update color based on progress - ANIMATION ONLY
+        refreshDiv.classList.remove('refresh-ready');
+        if (progress >= 1) {
+          hasReachedThreshold = true;
+          refreshDiv.classList.add('refresh-ready');
+        } else {
+          hasReachedThreshold = false;
         }
         
-        // Refresh function - matching WebViewPage style
-        function startRefreshing() {
-          isRefreshing = true;
-          refreshIndicator.classList.add('refreshing');
-          refreshIndicator.querySelector('.refresh-text').textContent = 'Refreshing...';
-          refreshIndicator.querySelector('.refresh-icon').textContent = '⟳';
-          refreshIndicator.style.transform = 'translateY(80px)';
-          
-          console.log('🔄 Sending refresh message via channel:', refreshChannelName);
-          
-          if (window[refreshChannelName]) {
-            console.log('✅ Channel found, sending refresh message');
-            if (window[refreshChannelName].postMessage) {
-              window[refreshChannelName].postMessage('refresh');
-              console.log('✅ Refresh message sent successfully');
-            } else {
-              console.error('❌ postMessage method not found on channel');
-            }
-          } else {
-            console.error('❌ Refresh channel not found:', refreshChannelName);
-          }
-          
-          setTimeout(() => {
-            endRefreshing();
-          }, 2000);
+        console.log(\`🔄 WebViewSheet animation: \${Math.round(progress * 100)}%\`);
+      }
+      
+      // Hide simple indicator - FIXED for sheet positioning
+      function hideRefresh() {
+        refreshDiv.style.opacity = '0';
+        refreshDiv.style.transform = 'translateX(-50%) translateY(-100px)'; // Return to hidden position
+        refreshDiv.classList.remove('refresh-ready', 'refresh-spinning');
+        refreshDiv.querySelector('.refresh-progress').style.strokeDashoffset = '63';
+        hasReachedThreshold = false;
+      }
+      
+      // Start simple refreshing animation - FIXED for sheet positioning
+      function doRefresh() {
+        if (isRefreshing || !hasReachedThreshold) {
+          console.log(\`❌ WebViewSheet refresh denied\`);
+          hideRefresh();
+          return;
         }
         
-        // End refreshing animation - matching WebViewPage
-        function endRefreshing() {
+        console.log('✅ WEBVIEWSHEET REFRESH TRIGGERED!');
+        isRefreshing = true;
+        
+        // Show simple spinning animation in visible area
+        refreshDiv.classList.remove('refresh-ready');
+        refreshDiv.classList.add('refresh-spinning');
+        refreshDiv.style.opacity = '1';
+        refreshDiv.style.transform = 'translateX(-50%) translateY(20px)'; // Position in visible area
+        
+        // Send refresh signal
+        if (window[refreshChannelName]) {
+          window[refreshChannelName].postMessage('refresh');
+          console.log('📤 WebViewSheet refresh message sent');
+        }
+        
+        // Auto-hide after 1.5 seconds
+        setTimeout(() => {
+          hideRefresh();
           isRefreshing = false;
-          refreshIndicator.classList.remove('refreshing', 'ready');
-          refreshIndicator.style.transform = 'translateY(-120px)';
-          refreshIndicator.querySelector('.refresh-text').textContent = 'Pull to refresh';
-          refreshIndicator.querySelector('.refresh-icon').style.transform = 'rotate(0deg)';
-        }
+        }, 1500);
+      }
+      
+      // STRICT Touch handlers
+      document.addEventListener('touchstart', function(e) {
+        if (isRefreshing) return;
         
-        // Touch handlers - matching WebViewPage behavior
-        function handleTouchStart(e) {
-          if (isRefreshing) return;
-          canPull = isAtPageTop();
-          if (!canPull) return;
+        if (isAtTop()) {
+          canPull = true;
           startY = e.touches[0].clientY;
+          currentPull = 0;
+          maxPull = 0;
           isPulling = false;
-          pullDistance = 0;
-        }
-        
-        function handleTouchMove(e) {
-          if (isRefreshing || !canPull) return;
-          currentY = e.touches[0].clientY;
-          const deltaY = currentY - startY;
-          
-          if (deltaY > 0 && isAtPageTop()) {
-            e.preventDefault();
-            isPulling = true;
-            pullDistance = Math.min(deltaY * 0.5, MAX_PULL_DISTANCE);
-            updateRefreshIndicator();
-          }
-        }
-        
-        function handleTouchEnd(e) {
-          if (isRefreshing || !isPulling) return;
-          
-          if (pullDistance >= PULL_THRESHOLD) {
-            startRefreshing();
-          } else {
-            refreshIndicator.style.transform = 'translateY(-120px)';
-            refreshIndicator.classList.remove('ready');
-          }
-          
-          isPulling = false;
-          pullDistance = 0;
+          hasReachedThreshold = false;
+          console.log('👆 WEBVIEWSHEET: Touch start at top - ready to pull');
+        } else {
           canPull = false;
         }
+      }, { passive: false });
+      
+      // STRICT Touch move - only show indicator after minimum pull
+      document.addEventListener('touchmove', function(e) {
+        if (!canPull || isRefreshing) return;
         
-        // Optimized scroll listener
-        function onScroll() {
-          if (scrollTimeout) {
-            clearTimeout(scrollTimeout);
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 0 && isAtTop()) {
+          currentPull = deltaY;
+          maxPull = Math.max(maxPull, deltaY);  // Track maximum pull reached
+          
+          // Only start showing indicator after minimum pull distance
+          if (deltaY >= MIN_PULL_SPEED) {
+            e.preventDefault(); // Prevent default scroll
+            isPulling = true;
+            updateRefresh(deltaY);
           }
-          scrollTimeout = setTimeout(checkScrollPosition, 30);
+        } else if (isPulling) {
+          // If user scrolls up or away from top, reset
+          isPulling = false;
+          hideRefresh();
+        }
+      }, { passive: false });
+      
+      // STRICT Touch end - ONLY refresh if threshold was reached
+      document.addEventListener('touchend', function(e) {
+        if (!isPulling || isRefreshing) {
+          // Reset states even if not pulling
+          isPulling = false;
+          canPull = false;
+          hasReachedThreshold = false;
+          return;
         }
         
-        // Remove existing listeners to prevent duplicates
-        window.removeEventListener('scroll', onScroll);
-        document.removeEventListener('touchstart', handleTouchStart);
-        document.removeEventListener('touchmove', handleTouchMove);
-        document.removeEventListener('touchend', handleTouchEnd);
+        console.log(\`🖱️ WEBVIEWSHEET STRICT RELEASE:
+          - Current pull: \${Math.round(currentPull)}px
+          - Max pull reached: \${Math.round(maxPull)}px  
+          - Threshold: \${PULL_THRESHOLD}px
+          - Threshold reached: \${hasReachedThreshold}
+          - Will refresh: \${hasReachedThreshold}\`);
         
-        // Add enhanced event listeners
-        window.addEventListener('scroll', onScroll, { passive: true });
-        document.addEventListener('touchstart', handleTouchStart, { passive: false });
-        document.addEventListener('touchmove', handleTouchMove, { passive: false });
-        document.addEventListener('touchend', handleTouchEnd, { passive: false });
+        if (hasReachedThreshold && maxPull >= PULL_THRESHOLD) {
+          console.log('✅ WEBVIEWSHEET STRICT SUCCESS: User pulled to threshold - refreshing!');
+          doRefresh();
+        } else {
+          console.log(\`❌ WEBVIEWSHEET STRICT FAIL: Not enough pull (max: \${Math.round(maxPull)}px, needed: \${PULL_THRESHOLD}px)\`);
+          hideRefresh();
+        }
         
-        // Handle touch cancel - matching WebViewPage
-        document.addEventListener('touchcancel', function(e) {
-          if (isPulling) {
-            refreshIndicator.style.transform = 'translateY(-120px)';
-            refreshIndicator.classList.remove('ready');
-            isPulling = false;
-            pullDistance = 0;
-            canPull = false;
-          }
-        }, { passive: true });
-        
-        // Initial check
-        setTimeout(checkScrollPosition, 200);
-        
-        console.log('✅ Enhanced scroll monitoring and pull-to-refresh initialized in sheet');
-        console.log('🔧 Refresh channel name:', refreshChannelName);
-        
-        // Log available services for debugging
-        console.log('🔧 Available services in sheet WebView:', {
-          BarcodeScanner: !!window.BarcodeScanner,
-          LocationManager: !!window.LocationManager,
-          ContactsManager: !!window.ContactsManager,
-          ScreenshotManager: !!window.ScreenshotManager,
-          ImageSaver: !!window.ImageSaver,
-          PdfSaver: !!window.PdfSaver,
-          AlertManager: !!window.AlertManager,
-          ThemeManager: !!window.ThemeManager,
-          AuthManager: !!window.AuthManager,
-          ERPForever: !!window.ERPForever
-        });
-        
-        // Expose refresh function globally
-        window.ERPForever = window.ERPForever || {};
-        window.ERPForever.triggerRefresh = function() {
-          if (!isRefreshing) {
-            startRefreshing();
-          }
+        // Reset all states
+        isPulling = false;
+        canPull = false;
+        currentPull = 0;
+        maxPull = 0;
+        startY = 0;
+        hasReachedThreshold = false;
+      }, { passive: false });
+      
+      // Touch cancel - always reset
+      document.addEventListener('touchcancel', function(e) {
+        console.log('❌ WEBVIEWSHEET STRICT: Touch cancelled - resetting');
+        hideRefresh();
+        isPulling = false;
+        canPull = false;
+        hasReachedThreshold = false;
+        currentPull = 0;
+        maxPull = 0;
+      }, { passive: true });
+      
+      // Scroll monitoring for Flutter
+      function checkScroll() {
+        if (window[scrollChannelName] && window[scrollChannelName].postMessage) {
+          window[scrollChannelName].postMessage(isAtTop().toString());
+        }
+      }
+      
+      // Optimized scroll listener
+      window.removeEventListener('scroll', checkScroll);
+      window.addEventListener('scroll', function() {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(checkScroll, 50);
+      }, { passive: true });
+      
+      // Initial scroll check
+      setTimeout(checkScroll, 100);
+      
+      console.log('✅ WEBVIEWSHEET STRICT pull-to-refresh ready!');
+      console.log(\`📋 WEBVIEWSHEET STRICT Rules:
+        - Must be at top of page
+        - Must pull at least \${MIN_PULL_SPEED}px to start
+        - Must pull \${PULL_THRESHOLD}px to activate refresh
+        - Must RELEASE while in green state to refresh
+        - Any incomplete pull will bounce back\`);
+      
+      // Manual trigger function
+      window.ERPForever = window.ERPForever || {};
+      window.ERPForever.triggerRefresh = function() {
+        if (!isRefreshing) {
+          console.log('🧪 Testing WebViewSheet refresh...');
+          hasReachedThreshold = true;
+          doRefresh();
+        }
+      };
+      
+      // Status function for debugging
+      window.getRefreshStatusSheet = function() {
+        return {
+          isPulling: isPulling,
+          currentPull: currentPull,
+          maxPull: maxPull,
+          hasReachedThreshold: hasReachedThreshold,
+          isRefreshing: isRefreshing,
+          canPull: canPull
         };
-        
-      })();
-    ''');
-  }
-
-  Future<bool> _onWillPop() async {
+      };
+      
+      console.log('✅ WebViewSheet STRICT pull-to-refresh initialized successfully');
+    })();
+  ''');
+} 
+ 
+ 
+ Future<bool> _onWillPop() async {
     try {
       if (await _controller.canGoBack()) {
         await _controller.goBack();

@@ -1,4 +1,6 @@
 // lib/services/webview_service.dart
+import 'dart:convert';
+
 import 'package:ERPForever/services/app_data_service.dart';
 import 'package:ERPForever/services/config_service.dart';
 import 'package:flutter/material.dart';
@@ -1150,112 +1152,144 @@ void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
       },
     );
   }
+void _sendContactsToWebView(Map<String, dynamic> contactsData) {
+  if (_currentController == null) {
+    debugPrint('❌ No WebView controller available for contacts result');
+    return;
+  }
 
-  void _sendContactsToWebView(Map<String, dynamic> contactsData) {
-    if (_currentController == null) {
-      debugPrint('❌ No WebView controller available for contacts result');
-      return;
-    }
+  debugPrint(
+    '📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts',
+  );
 
-    debugPrint(
-      '📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts',
-    );
+  final success = contactsData['success'] ?? false;
+  final error = (contactsData['error'] ?? '').replaceAll('"', '\\"').replaceAll('\n', '\\n');
+  final errorCode = contactsData['errorCode'] ?? '';
+  final totalCount = contactsData['totalCount'] ?? 0;
 
-    final success = contactsData['success'] ?? false;
-    final error = (contactsData['error'] ?? '').replaceAll('"', '\\"');
-    final errorCode = contactsData['errorCode'] ?? '';
-    final totalCount = contactsData['totalCount'] ?? 0;
-
-    // Convert contacts to JSON string safely
-    String contactsJson = '[]';
-    if (contactsData['contacts'] != null) {
-      try {
-        contactsJson = contactsData['contacts'].toString().replaceAll("'", '"');
-      } catch (e) {
-        debugPrint('❌ Error converting contacts to JSON: $e');
-      }
-    }
-
-    _currentController!.runJavaScript('''
-      try {
-        console.log("📞 Contacts received: Success=$success, Count=$totalCount");
-        
-        var contactsResult = {
-          success: $success,
-          contacts: $contactsJson,
-          totalCount: $totalCount,
-          error: "$error",
-          errorCode: "$errorCode"
-        };
-        
-        // Try callback functions
-        if (typeof getContactsCallback === 'function') {
-          console.log("✅ Calling getContactsCallback()");
-          getContactsCallback($success, contactsResult.contacts, $totalCount, "$error", "$errorCode");
-        } else if (typeof window.handleContactsResult === 'function') {
-          console.log("✅ Calling window.handleContactsResult()");
-          window.handleContactsResult(contactsResult);
-        } else if (typeof handleContactsResult === 'function') {
-          console.log("✅ Calling handleContactsResult()");
-          handleContactsResult(contactsResult);
-        } else {
-          console.log("✅ Using fallback - triggering event");
-          
-          var event = new CustomEvent('contactsReceived', { detail: contactsResult });
-          document.dispatchEvent(event);
-        }
-        
-      } catch (error) {
-        console.error("❌ Error handling contacts result:", error);
-      }
-    ''');
-
-    // Show feedback to user
-    if (_currentContext != null) {
-      String message;
-      Color backgroundColor;
-
-      if (contactsData['success']) {
-        message = 'Loaded ${contactsData['totalCount']} contacts';
-        backgroundColor = Colors.green;
-      } else {
-        message = contactsData['error'] ?? 'Failed to load contacts';
-        backgroundColor = Colors.red;
-      }
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: Duration(
-            seconds: 5,
-          ), // Longer duration for permission messages
-          backgroundColor: backgroundColor,
-          action:
-              !contactsData['success'] &&
-                      contactsData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-                  ? SnackBarAction(
-                    label: 'Settings',
-                    textColor: Colors.white,
-                    onPressed: () async {
-                      bool opened = await AppContactsService().openSettings();
-                      if (!opened) {
-                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Please manually open Settings > Apps > ERPForever > Permissions',
-                            ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      }
-                    },
-                  )
-                  : null,
-        ),
-      );
+  // Convert contacts to proper JSON string
+  String contactsJson = '[]';
+  if (contactsData['contacts'] != null && success) {
+    try {
+      // Properly format contacts as JSON
+      final contacts = contactsData['contacts'] as List;
+      final jsonString = jsonEncode(contacts);
+      contactsJson = jsonString;
+      debugPrint('✅ Contacts JSON prepared: ${contacts.length} contacts');
+    } catch (e) {
+      debugPrint('❌ Error converting contacts to JSON: $e');
+      contactsJson = '[]';
     }
   }
 
+  _currentController!.runJavaScript('''
+    try {
+      console.log("📞 Contacts received: Success=$success, Count=$totalCount");
+      
+      var contactsResult = {
+        success: $success,
+        contacts: $contactsJson,
+        totalCount: $totalCount,
+        error: "$error",
+        errorCode: "$errorCode"
+      };
+      
+      // 🆕 NEW: Call the getContacts(json_object) function with the contacts array
+      if (typeof getContacts === 'function') {
+        console.log("✅ Calling getContacts() with contacts array");
+        try {
+          // Call getContacts with the actual contacts array (not the wrapper object)
+          getContacts(contactsResult.contacts);
+          console.log("✅ getContacts() called successfully with " + contactsResult.contacts.length + " contacts");
+        } catch (error) {
+          console.error("❌ Error calling getContacts():", error);
+        }
+      } else {
+        console.log("⚠️ getContacts() function not found, using fallback methods");
+      }
+      
+      // Keep existing callback functions for backward compatibility
+      if (typeof getContactsCallback === 'function') {
+        console.log("✅ Calling getContactsCallback()");
+        getContactsCallback($success, contactsResult.contacts, $totalCount, "$error", "$errorCode");
+      } else if (typeof window.handleContactsResult === 'function') {
+        console.log("✅ Calling window.handleContactsResult()");
+        window.handleContactsResult(contactsResult);
+      } else if (typeof handleContactsResult === 'function') {
+        console.log("✅ Calling handleContactsResult()");
+        handleContactsResult(contactsResult);
+      }
+      
+      // Always dispatch event as fallback
+      var event = new CustomEvent('contactsReceived', { detail: contactsResult });
+      document.dispatchEvent(event);
+      console.log("📨 contactsReceived event dispatched");
+      
+      // 🆕 NEW: Also dispatch a specific event for the getContacts function
+      if (contactsResult.success && contactsResult.contacts.length > 0) {
+        var getContactsEvent = new CustomEvent('getContactsResult', { 
+          detail: {
+            contacts: contactsResult.contacts,
+            totalCount: $totalCount,
+            timestamp: new Date().toISOString()
+          }
+        });
+        document.dispatchEvent(getContactsEvent);
+        console.log("📨 getContactsResult event dispatched with " + contactsResult.contacts.length + " contacts");
+      }
+      
+    } catch (error) {
+      console.error("❌ Error handling contacts result:", error);
+      
+      // Try to call getContacts with empty array on error
+      if (typeof getContacts === 'function') {
+        try {
+          getContacts([]);
+          console.log("✅ getContacts() called with empty array due to error");
+        } catch (getContactsError) {
+          console.error("❌ Error calling getContacts() with empty array:", getContactsError);
+        }
+      }
+    }
+  ''');
+
+  // Show feedback to user using toast protocol instead of SnackBar
+  if (_currentContext != null) {
+    if (contactsData['success']) {
+      // Use toast:// for success messages
+      _currentController!.runJavaScript('''
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://Loaded ${contactsData['totalCount']} contacts');
+        } else {
+          window.location.href = 'toast://Loaded ${contactsData['totalCount']} contacts';
+        }
+      ''');
+    } else {
+      // Use alert:// for errors that need user attention
+      final errorMessage = contactsData['error'] ?? 'Failed to load contacts';
+      final escapedError = errorMessage.replaceAll('"', '\\"').replaceAll('\n', '\\n');
+      
+      _currentController!.runJavaScript('''
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent('Contacts Error: $escapedError'));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent('Contacts Error: $escapedError');
+        }
+      ''');
+      
+      // For permission errors, also show settings action
+      if (contactsData['errorCode'] == 'PERMISSION_DENIED_FOREVER') {
+        _currentController!.runJavaScript('''
+          setTimeout(function() {
+            if (window.AlertManager) {
+              window.AlertManager.postMessage('alert://' + encodeURIComponent('Please go to Settings > Apps > ERPForever > Permissions and enable Contacts access'));
+            }
+          }, 2000);
+        ''');
+      }
+    }
+  }
+}
 void _handleLocationRequest(String message) async {
   if (_currentContext == null || _currentController == null) {
     debugPrint('❌ No context or controller available for location request');
@@ -1550,10 +1584,28 @@ void _injectJavaScript(WebViewController controller) {
         const href = element.getAttribute('href');
         const textContent = element.textContent?.toLowerCase() || '';
         
-        // Handle all URL protocols
+        // Handle all URL protocols FIRST - if we find href, process it and skip text checks
         if (href) {
+          console.log('🔍 Click detected on href:', href);
+          
+          // PRIORITY: Handle external URLs with ?external=1 parameter
+          if (href.includes('?external=1')) {
+            console.log('🌐 External URL detected, letting NavigationDelegate handle it');
+            return; // Let NavigationDelegate handle this
+          }
+          
+          // PRIORITY: Handle new-web:// - Let NavigationDelegate handle this
+          if (href.startsWith('new-web://')) {
+            console.log('🌐 new-web:// link clicked - letting NavigationDelegate handle it');
+            return; // Exit the entire click handler
+          }
+          // PRIORITY: Handle new-sheet:// - Let NavigationDelegate handle this
+          else if (href.startsWith('new-sheet://')) {
+            console.log('📋 new-sheet:// link clicked - letting NavigationDelegate handle it');
+            return; // Exit the entire click handler
+          }
           // Alert requests
-          if (href.startsWith('alert://')) {
+          else if (href.startsWith('alert://')) {
             e.preventDefault();
             if (window.AlertManager) {
               window.AlertManager.postMessage(href);
@@ -1562,9 +1614,7 @@ void _injectJavaScript(WebViewController controller) {
               console.error("❌ AlertManager not available");
             }
             return false;
-          } 
-          // Confirm requests
-          else if (href.startsWith('confirm://')) {
+          } else if (href.startsWith('confirm://')) {
             e.preventDefault();
             if (window.AlertManager) {
               window.AlertManager.postMessage(href);
@@ -1573,9 +1623,7 @@ void _injectJavaScript(WebViewController controller) {
               console.error("❌ AlertManager not available");
             }
             return false;
-          } 
-          // Prompt requests
-          else if (href.startsWith('prompt://')) {
+          } else if (href.startsWith('prompt://')) {
             e.preventDefault();
             if (window.AlertManager) {
               window.AlertManager.postMessage(href);
@@ -1610,10 +1658,15 @@ void _injectJavaScript(WebViewController controller) {
             if (window.ThemeManager) window.ThemeManager.postMessage('system');
             return false;
           } 
-          // Auth requests
+          // Auth requests - ONLY handle via JavaScript - MAKE MORE SPECIFIC
           else if (href.startsWith('logout://')) {
             e.preventDefault();
-            if (window.AuthManager) window.AuthManager.postMessage('logout');
+            if (window.AuthManager) {
+              window.AuthManager.postMessage('logout');
+              console.log("🚪 Logout triggered via URL (handled by JS)");
+            } else {
+              console.error("❌ AuthManager not available");
+            }
             return false;
           } 
           // Location requests
@@ -1651,9 +1704,53 @@ void _injectJavaScript(WebViewController controller) {
             }
             return false;
           }
+          // FIXED: Barcode detection with proper continuous checking
+          else if (href?.includes('barcode') || href?.includes('scan')) {
+            e.preventDefault();
+            
+            // Enhanced continuous detection
+            const isContinuous = href.includes('continuous') || 
+                                href.includes('Continuous') || 
+                                href.includes('scanContinuous') ||
+                                href.toLowerCase().includes('continuous') ||
+                                textContent.includes('continuous') ||
+                                element.classList.contains('continuous-scan') ||
+                                element.getAttribute('data-scan-type') === 'continuous' ||
+                                element.getAttribute('data-continuous') === 'true';
+            
+            if (window.BarcodeScanner) {
+              const message = isContinuous ? 'scanContinuous' : 'scan';
+              window.BarcodeScanner.postMessage(message);
+              console.log("📱 Barcode scan triggered via href - Type:", message, "URL:", href, "Continuous detected:", isContinuous);
+            } else {
+              console.error("❌ BarcodeScanner not available");
+            }
+            return false;
+          }
+          
+          // If we found an href but it's not a special protocol, continue to next element
+          // DON'T do text-based detection on elements that have href attributes
+          element = element.parentElement;
+          continue; // Skip text-based detection for this element
         }
         
-        // Text-based detection (enhanced with alerts)
+        // ONLY do text-based detection if NO href was found
+        // Text-based detection for services (only if no href) - MAKE MORE SPECIFIC
+        
+        // REMOVED AUTOMATIC LOGOUT DETECTION - Only trigger logout on specific elements
+        // Check if element has specific logout classes or data attributes
+        if ((element.classList && (element.classList.contains('logout-btn') || element.classList.contains('sign-out-btn'))) ||
+            element.getAttribute('data-action') === 'logout' ||
+            element.getAttribute('data-logout') === 'true') {
+          e.preventDefault();
+          if (window.AuthManager) {
+            window.AuthManager.postMessage('logout');
+            console.log("🚪 Logout triggered via specific logout element");
+          } else {
+            console.error("❌ AuthManager not available");
+          }
+          return false;
+        }
         
         // Alert detection
         if (textContent.includes('show alert') || textContent.includes('alert message') || textContent.includes('display alert')) {
@@ -1726,27 +1823,6 @@ void _injectJavaScript(WebViewController controller) {
           }
         }
         
-        // Barcode detection
-        if (href?.includes('barcode') || href?.includes('scan') || textContent.includes('scan barcode') || textContent.includes('qr code')) {
-          e.preventDefault();
-          if (window.BarcodeScanner) {
-            window.BarcodeScanner.postMessage('scan');
-            console.log("📱 Barcode scan triggered via text");
-          }
-          return false;
-        }
-        
-        // Logout detection
-        if (textContent.includes('logout') || textContent.includes('log out') || textContent.includes('sign out')) {
-          e.preventDefault();
-          if (window.AuthManager) {
-            window.AuthManager.postMessage('logout');
-            console.log("🚪 Logout triggered via text");
-          }
-          return false;
-        }
-        
-        // Location detection
         if (textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) {
           e.preventDefault();
           if (window.LocationManager) {
@@ -1756,7 +1832,6 @@ void _injectJavaScript(WebViewController controller) {
           return false;
         }
         
-        // Contacts detection
         if (textContent.includes('get contacts') || textContent.includes('load contacts') || textContent.includes('contact list')) {
           e.preventDefault();
           if (window.ContactsManager) {
@@ -1766,12 +1841,37 @@ void _injectJavaScript(WebViewController controller) {
           return false;
         }
         
-        // Screenshot detection
         if (textContent.includes('screenshot') || textContent.includes('capture screen') || textContent.includes('take screenshot')) {
           e.preventDefault();
           if (window.ScreenshotManager) {
             window.ScreenshotManager.postMessage('takeScreenshot');
             console.log("📸 Screenshot triggered via text");
+          }
+          return false;
+        }
+        
+        // FIXED: Enhanced barcode text detection with continuous support
+        if (textContent.includes('scan barcode') || textContent.includes('qr code') || textContent.includes('scan qr') || textContent.includes('barcode scan')) {
+          e.preventDefault();
+          
+          // Enhanced continuous detection for text-based triggers
+          const isContinuous = textContent.includes('continuous') || 
+                              textContent.includes('scan continuously') ||
+                              textContent.includes('continuous scan') ||
+                              textContent.includes('continuously') ||
+                              element.classList.contains('continuous-scan') ||
+                              element.getAttribute('data-scan-type') === 'continuous' ||
+                              element.getAttribute('data-continuous') === 'true' ||
+                              element.closest('[data-scan-type="continuous"]') !== null ||
+                              element.closest('.continuous-scan') !== null ||
+                              element.closest('[data-continuous="true"]') !== null;
+          
+          if (window.BarcodeScanner) {
+            const message = isContinuous ? 'scanContinuous' : 'scan';
+            window.BarcodeScanner.postMessage(message);
+            console.log("📱 Barcode scan triggered via text - Type:", message, "Text:", textContent, "Continuous detected:", isContinuous);
+          } else {
+            console.error("❌ BarcodeScanner not available");
           }
           return false;
         }
@@ -1897,13 +1997,77 @@ void _injectJavaScript(WebViewController controller) {
         }
       },
       
-      // Contact System
+      // Contact System - ENHANCED with getContacts support
       getAllContacts: function() {
         console.log('📞 Getting all contacts...');
         if (window.ContactsManager) {
           window.ContactsManager.postMessage('getAllContacts');
         } else {
           console.error('❌ ContactsManager not available');
+        }
+      },
+      
+      // 🆕 NEW: Helper function to test getContacts implementation
+      testGetContacts: function() {
+        console.log('🧪 Testing getContacts function...');
+        if (typeof getContacts === 'function') {
+          // Test with sample data
+          var sampleContacts = [
+            {
+              id: "test1",
+              displayName: "Test Contact 1",
+              givenName: "Test",
+              familyName: "Contact",
+              middleName: "",
+              company: "Test Corp",
+              jobTitle: "Developer",
+              phones: [{"value": "+1234567890", "label": "mobile"}],
+              emails: [{"value": "test1@example.com", "label": "work"}],
+              addresses: [{
+                street: "123 Test St",
+                city: "Test City",
+                state: "TS",
+                postalCode: "12345",
+                country: "Test Country",
+                label: "home"
+              }],
+              websites: [{"url": "https://test1.com", "label": "personal"}],
+              notes: ["Sample contact for testing"]
+            },
+            {
+              id: "test2", 
+              displayName: "Test Contact 2",
+              givenName: "Test",
+              familyName: "Contact",
+              middleName: "M",
+              company: "Example Inc",
+              jobTitle: "Manager",
+              phones: [
+                {"value": "+0987654321", "label": "home"},
+                {"value": "+1122334455", "label": "work"}
+              ],
+              emails: [
+                {"value": "test2@example.com", "label": "personal"},
+                {"value": "test2@work.com", "label": "work"}
+              ],
+              addresses: [],
+              websites: [],
+              notes: []
+            }
+          ];
+          
+          try {
+            getContacts(sampleContacts);
+            console.log("✅ getContacts() test successful with sample data");
+            return true;
+          } catch (error) {
+            console.error("❌ getContacts() test failed:", error);
+            return false;
+          }
+        } else {
+          console.error("❌ getContacts() function not defined");
+          console.log("💡 Define: function getContacts(jsonArray) { ... } in your code");
+          return false;
         }
       },
       
@@ -1963,7 +2127,7 @@ void _injectJavaScript(WebViewController controller) {
       
       // Barcode System
       scanBarcode: function() {
-        console.log('📸 Scanning barcode...');
+        console.log('📸 Scanning barcode (single)...');
         if (window.BarcodeScanner) {
           window.BarcodeScanner.postMessage('scan');
         } else {
@@ -1977,6 +2141,27 @@ void _injectJavaScript(WebViewController controller) {
           window.BarcodeScanner.postMessage('scanContinuous');
         } else {
           console.error('❌ BarcodeScanner not available');
+        }
+      },
+      
+      // Auto-detect scan type from URL or element
+      scanBarcodeAuto: function(element) {
+        if (element && typeof element === 'object') {
+          const isContinuous = element.classList?.contains('continuous-scan') ||
+                              element.getAttribute('data-scan-type') === 'continuous' ||
+                              element.getAttribute('data-continuous') === 'true' ||
+                              element.textContent?.toLowerCase().includes('continuous');
+          
+          console.log('📱 Auto-detecting barcode scan type - continuous:', isContinuous);
+          
+          if (isContinuous) {
+            this.scanBarcodeContinuous();
+          } else {
+            this.scanBarcode();
+          }
+        } else {
+          console.log('📱 No element provided, defaulting to single scan');
+          this.scanBarcode(); // Default to single scan
         }
       },
       
@@ -2001,6 +2186,18 @@ void _injectJavaScript(WebViewController controller) {
           window.AuthManager.postMessage('logout');
         } else {
           console.error('❌ AuthManager not available');
+        }
+      },
+      
+      // NEW: External URL function
+      openExternal: function(url) {
+        console.log('🌐 Opening external URL:', url);
+        if (url && typeof url === 'string') {
+          // Add external parameter and navigate
+          const separator = url.includes('?') ? '&' : '?';
+          window.location.href = url + separator + 'external=1';
+        } else {
+          console.error('❌ Invalid URL for external navigation');
         }
       },
       
@@ -2118,11 +2315,12 @@ void _injectJavaScript(WebViewController controller) {
           userAgent: navigator.userAgent,
           features: this.getAvailableFeatures(),
           url: window.location.href,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          getContactsFunction: typeof getContacts === 'function'
         };
       },
       
-      version: '1.2.0'
+      version: '1.3.0'
     };
 
     console.log("✅ ERPForever WebView JavaScript ready!");
@@ -2131,37 +2329,96 @@ void _injectJavaScript(WebViewController controller) {
     console.log("    - window.ERPForever.showAlert('Hello World!')");
     console.log("    - window.ERPForever.showConfirm('Are you sure?')");
     console.log("    - window.ERPForever.showPrompt('Enter name:', 'Default')");
+    console.log("    - <a href='alert://Hello%20World!'>Show Alert</a>");
     console.log("  🍞 Toast:");
     console.log("    - window.ERPForever.showToast('Message sent!')");
     console.log("    - <a href='toast://Hello%20World!'>Show Toast</a>");
     console.log("  📞 Contacts:");
-    console.log("    - window.ERPForever.getAllContacts()");
+    console.log("    - window.ERPForever.getAllContacts() // Triggers contact retrieval");
+    console.log("    - window.ERPForever.testGetContacts() // Test your getContacts function");
+    console.log("    - <a href='get-contacts://'>Get Contacts</a>");
+    console.log("  🆕 Define getContacts function:");
+    console.log("    function getContacts(jsonArray) {");
+    console.log("      console.log('Received contacts:', jsonArray.length);");
+    console.log("      jsonArray.forEach(contact => {");
+    console.log("        console.log('Contact:', contact.displayName);");
+    console.log("      });");
+    console.log("    }");
     console.log("  🌍 Location:");
     console.log("    - window.ERPForever.getCurrentLocation()");
+    console.log("    - <a href='get-location://'>Get Location</a>");
     console.log("  📸 Media:");
     console.log("    - window.ERPForever.takeScreenshot()");
     console.log("    - window.ERPForever.saveImage('https://example.com/image.jpg')");
     console.log("    - window.ERPForever.savePdf('https://example.com/document.pdf')");
+    console.log("    - <a href='take-screenshot://'>Take Screenshot</a>");
+    console.log("    - <a href='save-image://https://example.com/image.jpg'>Save Image</a>");
+    console.log("    - <a href='save-pdf://https://example.com/doc.pdf'>Save PDF</a>");
     console.log("  🎨 Theme:");
     console.log("    - window.ERPForever.setTheme('dark')");
+    console.log("    - <a href='dark-mode://'>Dark Mode</a>");
+    console.log("    - <a href='light-mode://'>Light Mode</a>");
+    console.log("    - <a href='system-mode://'>System Mode</a>");
     console.log("  📱 Barcode:");
-    console.log("    - window.ERPForever.scanBarcode()");
+    console.log("    - window.ERPForever.scanBarcode() // Single scan");
+    console.log("    - window.ERPForever.scanBarcodeContinuous() // Continuous scan");
+    console.log("    - window.ERPForever.scanBarcodeAuto(element) // Auto-detect type");
+    console.log("    - <a href='scan://'>Scan Barcode</a>");
+    console.log("    - <a href='continuous-barcode://'>Continuous Scan</a>");
     console.log("  🚪 Auth:");
     console.log("    - window.ERPForever.logout()");
+    console.log("    - <a href='logout://'>Logout</a>");
+    console.log("  🌐 External URLs:");
+    console.log("    - window.ERPForever.openExternal('https://google.com')");
+    console.log("    - <a href='https://google.com?external=1'>Open in Browser</a>");
+    console.log("  🔧 Utility:");
+    console.log("    - window.ERPForever.getAvailableFeatures() // Check what's available");
+    console.log("    - window.ERPForever.getDebugInfo() // Debug information");
+    console.log("    - window.ERPForever.saveAllPdfs() // Save all PDFs on page");
+    console.log("    - window.ERPForever.saveAllImages() // Save all images on page");
+    
+    console.log("🆕 Contact Data Format (getContacts function receives):");
+    console.log("  [");
+    console.log("    {");
+    console.log("      id: 'contact_id',");
+    console.log("      displayName: 'John Doe',");
+    console.log("      givenName: 'John',");
+    console.log("      familyName: 'Doe',");
+    console.log("      middleName: 'M',");
+    console.log("      company: 'Example Corp',");
+    console.log("      jobTitle: 'Developer',");
+    console.log("      phones: [{ value: '+1234567890', label: 'mobile' }],");
+    console.log("      emails: [{ value: 'john@example.com', label: 'work' }],");
+    console.log("      addresses: [{");
+    console.log("        street: '123 Main St',");
+    console.log("        city: 'Anytown',");
+    console.log("        state: 'CA',");
+    console.log("        postalCode: '12345',");
+    console.log("        country: 'USA',");
+    console.log("        label: 'home'");
+    console.log("      }],");
+    console.log("      websites: [{ url: 'https://johndoe.com', label: 'personal' }],");
+    console.log("      notes: ['Additional notes']");
+    console.log("    }");
+    console.log("  ]");
     
     window.addEventListener('error', function(e) {
       console.error('JavaScript error:', e.error);
     });
     
+    // Dispatch ready event
     var readyEvent = new CustomEvent('ERPForeverReady', { 
       detail: { 
         version: window.ERPForever.version,
-        features: window.ERPForever.getAvailableFeatures()
+        features: window.ERPForever.getAvailableFeatures(),
+        hasGetContactsFunction: typeof getContacts === 'function'
       } 
     });
     document.dispatchEvent(readyEvent);
     
+    // Auto-enhance page after load
     setTimeout(function() {
+      // Enhance PDF links
       var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
       console.log('📄 Found', pdfLinks.length, 'PDF links on page');
       
@@ -2170,6 +2427,7 @@ void _injectJavaScript(WebViewController controller) {
           link.classList.add('pdf-detected');
           link.title = (link.title || '') + ' (Click to save PDF)';
           
+          // Add PDF icon if not present
           if (!link.querySelector('.pdf-icon')) {
             var icon = document.createElement('span');
             icon.className = 'pdf-icon';
@@ -2180,9 +2438,11 @@ void _injectJavaScript(WebViewController controller) {
         }
       });
       
+      // Log image count
       var images = document.querySelectorAll('img[src]');
       console.log('🖼️ Found', images.length, 'images on page');
       
+      // Enhance alert/toast elements
       var alertElements = document.querySelectorAll('[data-alert], [data-confirm], [data-prompt], [data-toast]');
       console.log('🚨 Found', alertElements.length, 'elements with alert/toast attributes');
       
@@ -2193,13 +2453,88 @@ void _injectJavaScript(WebViewController controller) {
           element.title = element.title || 'Click to show message';
         }
       });
+      
+      // Enhance barcode scan elements
+      var barcodeElements = document.querySelectorAll('[data-scan-type], .barcode-scan, .qr-scan');
+      console.log('📱 Found', barcodeElements.length, 'barcode scan elements');
+      
+      barcodeElements.forEach(function(element) {
+        if (!element.classList.contains('barcode-detected')) {
+          element.classList.add('barcode-detected');
+          element.style.cursor = 'pointer';
+          
+          const scanType = element.getAttribute('data-scan-type') || 'single';
+          element.title = element.title || ('Click to scan barcode (' + scanType + ')');
+        }
+      });
+      
+      // Check for getContacts function
+      if (typeof getContacts === 'function') {
+        console.log('✅ getContacts() function detected - contacts integration ready!');
+      } else {
+        console.log('💡 Define getContacts(jsonArray) function to receive contacts data');
+        console.log('   Example: function getContacts(contacts) { console.log(contacts); }');
+      }
+      
     }, 1000);
     
     console.log("🎉 ERPForever WebView fully initialized with complete feature set!");
-    console.log("🔧 Debug info:", window.ERPForever.getDebugInfo());
+    console.log("🔧 All services available:", window.ERPForever.getAvailableFeatures());
+    console.log("📞 Contacts integration:", typeof getContacts === 'function' ? 'READY' : 'DEFINE getContacts FUNCTION');
+    console.log("🆔 Debug info:", window.ERPForever.getDebugInfo());
+    
+    // Add CSS for enhanced elements
+    var enhancementStyles = document.createElement('style');
+    enhancementStyles.innerHTML = \`
+      .pdf-detected {
+        position: relative;
+      }
+      
+      .pdf-detected:hover .pdf-icon {
+        transform: scale(1.2);
+        transition: transform 0.2s ease;
+      }
+      
+      .alert-detected:hover {
+        background-color: rgba(0, 120, 215, 0.1);
+        transition: background-color 0.2s ease;
+      }
+      
+      .barcode-detected:hover {
+        background-color: rgba(40, 167, 69, 0.1);
+        transition: background-color 0.2s ease;
+      }
+      
+      [data-scan-type="continuous"]:before,
+      .continuous-scan:before {
+        content: "🔄 ";
+        font-size: 0.8em;
+      }
+      
+      [data-alert]:before {
+        content: "🚨 ";
+        font-size: 0.8em;
+      }
+      
+      [data-confirm]:before {
+        content: "❓ ";
+        font-size: 0.8em;
+      }
+      
+      [data-prompt]:before {
+        content: "✏️ ";
+        font-size: 0.8em;
+      }
+      
+      [data-toast]:before {
+        content: "🍞 ";
+        font-size: 0.8em;
+      }
+    \`;
+    document.head.appendChild(enhancementStyles);
+    
   ''');
 }
-
   // Update context
 void updateContext(BuildContext context) {
   if (_controllerStack.isNotEmpty) {

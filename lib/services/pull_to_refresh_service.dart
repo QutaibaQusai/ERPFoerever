@@ -1,4 +1,4 @@
-// lib/services/pull_to_refresh_service.dart
+// lib/services/pull_to_refresh_service.dart - FIXED SHEET VERSION
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -14,13 +14,6 @@ class PullToRefreshService {
   PullToRefreshService._internal();
 
   /// Inject native pull-to-refresh functionality into a WebView
-  /// 
-  /// Parameters:
-  /// - [controller]: The WebViewController to inject the refresh functionality into
-  /// - [context]: The context type (mainScreen, webViewPage, or sheetWebView)
-  /// - [tabIndex]: For main screen tabs (optional, defaults to 0)
-  /// - [refreshChannelName]: The JavaScript channel name for refresh communication
-  /// - [flutterContext]: Flutter BuildContext for theme detection
   void injectNativePullToRefresh({
     required WebViewController controller,
     required RefreshContext context,
@@ -34,7 +27,7 @@ class PullToRefreshService {
       final thresholds = _getThresholds(context);
       final positioning = _getPositioning(context);
       
-      debugPrint('🔄 Injecting STRICT pull-to-refresh for $contextName...');
+      debugPrint('🔄 Injecting FIXED pull-to-refresh for $contextName...');
 
       // Get current theme from Flutter
       String currentFlutterTheme = 'light';
@@ -45,7 +38,7 @@ class PullToRefreshService {
 
       controller.runJavaScript('''
       (function() {
-        console.log('🔄 Starting STRICT pull-to-refresh with Flutter theme sync for $contextName...');
+        console.log('🔄 Starting FIXED pull-to-refresh for $contextName...');
         
         // Configuration
         const PULL_THRESHOLD = ${thresholds['pullThreshold']};
@@ -53,6 +46,7 @@ class PullToRefreshService {
         const channelName = '$refreshChannelName';
         const contextName = '$contextName';
         const elementId = '$elementId';
+        const isSheetContext = '$contextName' === 'WEBVIEW SHEET';
         ${tabIndex > 0 ? 'const tabIndex = $tabIndex;' : ''}
         
         // Remove any existing refresh elements
@@ -68,9 +62,14 @@ class PullToRefreshService {
         let canPull = false;
         let hasReachedThreshold = false;
         let refreshBlocked = false;
-        let currentTheme = '$currentFlutterTheme'; // Start with Flutter's current theme
+        let currentTheme = '$currentFlutterTheme';
         
-        // Function to detect current theme (enhanced with Flutter preference)
+        // FIXED: Strict sheet variables - only allow at exact top
+        let lastScrollTop = 0;
+        let touchStartTime = 0;
+        let initialTouchY = 0;
+        
+        // Function to detect current theme
         function detectCurrentTheme() {
           return currentTheme;
         }
@@ -126,6 +125,27 @@ class PullToRefreshService {
           }
           return false;
         };
+        
+        // FIXED: Strict top detection - especially for sheets
+        function isAtTop() {
+          const scrollTop = Math.max(
+            window.pageYOffset || 0,
+            document.documentElement.scrollTop || 0,
+            document.body.scrollTop || 0
+          );
+          
+          if (isSheetContext) {
+            // STRICT: For sheets, only allow refresh if EXACTLY at top (0px)
+            const isExactlyAtTop = scrollTop === 0;
+            
+            console.log('📍 Sheet STRICT check: scrollTop =', scrollTop, '| isExactlyAtTop =', isExactlyAtTop);
+            
+            return isExactlyAtTop;
+          } else {
+            // For main screen and regular webview, allow small tolerance
+            return scrollTop <= 3;
+          }
+        }
         
         // Create refresh indicator with dynamic theming
         const refreshDiv = document.createElement('div');
@@ -237,30 +257,23 @@ class PullToRefreshService {
         // Initial theme setup
         updateIndicatorTheme();
         
-        // Prevent overscroll
-        document.body.style.cssText += \`
-          overscroll-behavior-y: contain;
-          overflow-anchor: none;
-          -webkit-overflow-scrolling: touch;
-        \`;
-        
-        // Check if at top of page - MORE STRICT
-        function isAtTop() {
-          const scrollTop = Math.max(
-            window.pageYOffset || 0,
-            document.documentElement.scrollTop || 0,
-            document.body.scrollTop || 0
-          );
+        // Prevent overscroll and setup proper scroll area for sheets
+        if (isSheetContext) {
+          document.body.style.cssText += \`
+            overscroll-behavior-y: contain;
+            overflow-anchor: none;
+            -webkit-overflow-scrolling: touch;
+            padding-top: 0px;
+          \`;
           
-          // Be very strict - must be exactly at the top
-          const isExactlyAtTop = scrollTop === 0;
-          
-          // Log for debugging
-          if (scrollTop > 0 && scrollTop <= 10) {
-            console.log('🔍 ' + contextName + ' scroll position:', scrollTop, 'isAtTop:', isExactlyAtTop);
-          }
-          
-          return isExactlyAtTop;
+          document.documentElement.style.scrollPaddingTop = '0px';
+          document.body.style.marginTop = '0px';
+        } else {
+          document.body.style.cssText += \`
+            overscroll-behavior-y: contain;
+            overflow-anchor: none;
+            -webkit-overflow-scrolling: touch;
+          \`;
         }
         
         // Update refresh indicator
@@ -269,7 +282,17 @@ class PullToRefreshService {
           
           refreshDiv.style.opacity = progress > 0.1 ? '1' : '0';
           
-          ${_getUpdateRefreshLogic(context)}
+          // Special handling for sheet context to show in scroll area
+          if (isSheetContext) {
+            const translateY = Math.min(distance * 0.5, 80) - 60;
+            refreshDiv.style.transform = \`translateX(-50%) translateY(\${translateY}px)\`;
+            
+            if (progress > 0.1) {
+              const bodyTransform = Math.min(distance * 0.3, 30);
+              document.body.style.transform = \`translateY(\${bodyTransform}px)\`;
+              document.body.style.transition = 'transform 0.1s ease-out';
+            }
+          }
           
           const circleProgress = progress * 100;
           const strokeDashoffset = 63 - (circleProgress * 0.63);
@@ -295,7 +318,14 @@ class PullToRefreshService {
           refreshDiv.classList.remove('refresh-ready', 'refresh-spinning');
           refreshDiv.querySelector('.refresh-progress').style.strokeDashoffset = '63';
           hasReachedThreshold = false;
-          ${_getHideRefreshLogic(context)}
+          
+          // Reset body transform for sheet context
+          if (isSheetContext) {
+            document.body.style.transform = 'translateY(0px)';
+            document.body.style.transition = 'transform 0.2s ease-out';
+            refreshDiv.style.transform = 'translateX(-50%) translateY(-60px)';
+          }
+          
           updateIndicatorTheme();
         }
         
@@ -313,7 +343,13 @@ class PullToRefreshService {
           refreshDiv.classList.remove('refresh-ready');
           refreshDiv.classList.add('refresh-spinning');
           refreshDiv.style.opacity = '1';
-          ${_getDoRefreshLogic(context)}
+          
+          // Position during refresh for sheet context
+          if (isSheetContext) {
+            refreshDiv.style.transform = 'translateX(-50%) translateY(20px)';
+            document.body.style.transform = 'translateY(20px)';
+          }
+          
           updateIndicatorTheme();
           
           if (window[channelName]) {
@@ -327,29 +363,42 @@ class PullToRefreshService {
           }, 1500);
         }
         
-        // Touch event handlers - ENHANCED with better top detection
+        // FIXED: Touch event handlers with STRICT sheet top detection
         document.addEventListener('touchstart', function(e) {
           if (isRefreshing || !isRefreshAllowed()) return;
           
-          // Double-check that we're really at the top
+          touchStartTime = Date.now();
+          
+          // STRICT CHECK: Must be exactly at top for sheets
           const currentlyAtTop = isAtTop();
+          const currentScrollTop = Math.max(
+            window.pageYOffset || 0,
+            document.documentElement.scrollTop || 0,
+            document.body.scrollTop || 0
+          );
+          
+          // Store initial scroll position to detect scroll direction
+          lastScrollTop = currentScrollTop;
           
           if (currentlyAtTop) {
             canPull = true;
             startY = e.touches[0].clientY;
+            initialTouchY = e.touches[0].clientY;
             currentPull = 0;
             maxPull = 0;
             isPulling = false;
             hasReachedThreshold = false;
-            console.log('👆 ' + contextName + ': Touch start at TOP - ready to pull (scrollTop: 0)');
+            
+            if (isSheetContext) {
+              console.log('👆 Sheet: Touch start EXACTLY at TOP (scroll: ' + currentScrollTop + 'px) - ready to pull');
+            } else {
+              console.log('👆 ' + contextName + ': Touch start at TOP - ready to pull');
+            }
           } else {
             canPull = false;
-            const scrollTop = Math.max(
-              window.pageYOffset || 0,
-              document.documentElement.scrollTop || 0,
-              document.body.scrollTop || 0
-            );
-            console.log('🚫 ' + contextName + ': Touch start NOT at top - scroll position:', scrollTop);
+            if (isSheetContext) {
+              console.log('🚫 Sheet: Touch start NOT at exact top - scroll position:', currentScrollTop + 'px - NO PULL ALLOWED');
+            }
           }
         }, { passive: false });
         
@@ -359,22 +408,79 @@ class PullToRefreshService {
           const currentY = e.touches[0].clientY;
           const deltaY = currentY - startY;
           
-          // TRIPLE CHECK: Only allow pull if we're at top AND pulling down
-          if (deltaY > 0 && isAtTop()) {
-            currentPull = deltaY;
-            maxPull = Math.max(maxPull, deltaY);
+          // Get current scroll position
+          const currentScrollTop = Math.max(
+            window.pageYOffset || 0,
+            document.documentElement.scrollTop || 0,
+            document.body.scrollTop || 0
+          );
+          
+          // STRICT: Continuously check if still at top during touch move for sheets
+          if (isSheetContext) {
+            const stillAtTop = isAtTop();
             
-            if (deltaY >= MIN_PULL_SPEED) {
-              e.preventDefault();
-              isPulling = true;
-              updateRefresh(deltaY);
+            // CRITICAL FIX: Detect if user is scrolling the page content (not pulling to refresh)
+            // If scroll position changed from when touch started, this is page scrolling, not pull-to-refresh
+            if (currentScrollTop !== lastScrollTop) {
+              console.log('🛑 Sheet: Page scrolling detected (was: ' + lastScrollTop + 'px, now: ' + currentScrollTop + 'px) - cancelling pull');
+              isPulling = false;
+              hideRefresh();
+              canPull = false;
+              return;
             }
-          } else if (isPulling) {
-            // If user scrolls up or away from top, immediately reset
-            isPulling = false;
-            hideRefresh();
-            canPull = false; // Disable pulling until next touchstart
-            console.log('🛑 ' + contextName + ': Stopped pulling - not at top or scrolling up');
+            
+            // If not at top anymore, immediately cancel
+            if (!stillAtTop) {
+              console.log('🛑 Sheet: NO LONGER at top (scroll: ' + currentScrollTop + 'px) - cancelling pull');
+              isPulling = false;
+              hideRefresh();
+              canPull = false;
+              return;
+            }
+            
+            // Only allow pull if:
+            // 1. Pulling down (deltaY > 0)
+            // 2. Still at exact top (stillAtTop)
+            // 3. Scroll position hasn't changed (no page scrolling)
+            if (deltaY > 0 && stillAtTop && currentScrollTop === 0) {
+              currentPull = deltaY;
+              maxPull = Math.max(maxPull, deltaY);
+              
+              if (deltaY >= MIN_PULL_SPEED) {
+                e.preventDefault();
+                isPulling = true;
+                updateRefresh(deltaY);
+                console.log('🔄 Sheet: Valid pull -', deltaY + 'px (still at exact top, no scrolling)');
+              }
+            } else {
+              if (deltaY <= 0) {
+                console.log('🛑 Sheet: Pulling up - cancelling');
+              } else if (!stillAtTop) {
+                console.log('🛑 Sheet: Not at top - cancelling');
+              } else if (currentScrollTop !== 0) {
+                console.log('🛑 Sheet: Scroll position changed - cancelling');
+              }
+              isPulling = false;
+              hideRefresh();
+              canPull = false;
+            }
+          } else {
+            // Original logic for non-sheet contexts
+            if (deltaY > 0 && isAtTop()) {
+              currentPull = deltaY;
+              maxPull = Math.max(maxPull, deltaY);
+              
+              if (deltaY >= MIN_PULL_SPEED) {
+                e.preventDefault();
+                isPulling = true;
+                updateRefresh(deltaY);
+              }
+            } else if (isPulling) {
+              isPulling = false;
+              hideRefresh();
+              canPull = false;
+              console.log('🛑 ' + contextName + ': Stopped pulling - not at top or scrolling up');
+            }
           }
         }, { passive: false });
         
@@ -387,13 +493,44 @@ class PullToRefreshService {
             return;
           }
           
-          // FINAL CHECK: Make sure we're still at top when releasing
-          if (hasReachedThreshold && maxPull >= PULL_THRESHOLD && isAtTop()) {
-            console.log('✅ ' + contextName.toUpperCase() + ' STRICT SUCCESS: User pulled to threshold at top - refreshing!');
-            doRefresh();
+          // FINAL STRICT CHECK: Must still be at top for sheets
+          const finallyAtTop = isAtTop();
+          const validPull = hasReachedThreshold && maxPull >= PULL_THRESHOLD;
+          
+          if (isSheetContext) {
+            // STRICT: Must be exactly at top AND have valid pull
+            const canRefresh = finallyAtTop && validPull;
+            
+            const currentScrollTop = Math.max(
+              window.pageYOffset || 0,
+              document.documentElement.scrollTop || 0,
+              document.body.scrollTop || 0
+            );
+            
+            console.log('🏁 Sheet FINAL CHECK:', {
+              finallyAtTop: finallyAtTop,
+              validPull: validPull,
+              canRefresh: canRefresh,
+              maxPull: maxPull,
+              threshold: PULL_THRESHOLD,
+              scrollTop: currentScrollTop
+            });
+            
+            if (canRefresh) {
+              console.log('✅ SHEET SUCCESS: Valid pull-to-refresh from exact top!');
+              doRefresh();
+            } else {
+              console.log('❌ SHEET FAIL: Not at exact top or insufficient pull');
+              hideRefresh();
+            }
           } else {
-            console.log(\`❌ \${contextName.toUpperCase()} STRICT FAIL: Not enough pull or not at top\`);
-            hideRefresh();
+            if (validPull && finallyAtTop) {
+              console.log('✅ ' + contextName.toUpperCase() + ' SUCCESS: User pulled to threshold at top - refreshing!');
+              doRefresh();
+            } else {
+              console.log('❌ ' + contextName.toUpperCase() + ' FAIL: Not enough pull or not at top');
+              hideRefresh();
+            }
           }
           
           // Reset all states
@@ -414,14 +551,16 @@ class PullToRefreshService {
           maxPull = 0;
         }, { passive: true });
         
-        console.log('✅ ' + contextName.toUpperCase() + ' pull-to-refresh with Flutter theme sync ready!');
+        console.log('✅ ' + contextName.toUpperCase() + ' STRICT pull-to-refresh ready!');
         console.log('🎨 Current theme from Flutter:', currentTheme);
+        console.log('📋 Sheet-specific STRICT mode:', isSheetContext ? 'ENABLED (scroll must be exactly 0px)' : 'DISABLED');
         
       })();
       ''');
 
-      debugPrint('✅ STRICT pull-to-refresh injected for $contextName');
+      debugPrint('✅ FIXED pull-to-refresh injected for $contextName');
     } catch (e) {
+      debugPrint('❌ Error injecting fixed pull-to-refresh: $e');
     }
   }
 
@@ -439,11 +578,11 @@ class PullToRefreshService {
   String _getElementId(RefreshContext context, int tabIndex) {
     switch (context) {
       case RefreshContext.mainScreen:
-        return 'strict-refresh-main-$tabIndex';
+        return 'enhanced-refresh-main-$tabIndex';
       case RefreshContext.webViewPage:
-        return 'strict-refresh-page';
+        return 'enhanced-refresh-page';
       case RefreshContext.sheetWebView:
-        return 'strict-refresh-sheet';
+        return 'enhanced-refresh-sheet';
     }
   }
 
@@ -454,6 +593,7 @@ class PullToRefreshService {
       case RefreshContext.webViewPage:
         return {'pullThreshold': 450, 'minPullSpeed': 150};
       case RefreshContext.sheetWebView:
+        // Keep same thresholds but strict top detection
         return {'pullThreshold': 350, 'minPullSpeed': 150};
     }
   }
@@ -475,43 +615,9 @@ class PullToRefreshService {
       case RefreshContext.sheetWebView:
         return {
           'position': 'absolute',
-          'top': '80px',
-          'transform': 'translateX(-50%) translateY(-100px)',
+          'top': '0px',
+          'transform': 'translateX(-50%) translateY(-60px)',
         };
-    }
-  }
-
-  String _getUpdateRefreshLogic(RefreshContext context) {
-    switch (context) {
-      case RefreshContext.mainScreen:
-      case RefreshContext.webViewPage:
-        return '// Standard positioning - no special transform needed';
-      case RefreshContext.sheetWebView:
-        return '''
-          // Sheet-specific positioning
-          const translateY = Math.min(distance * 0.3, 60) - 100;
-          refreshDiv.style.transform = \`translateX(-50%) translateY(\${translateY}px)\`;
-        ''';
-    }
-  }
-
-  String _getHideRefreshLogic(RefreshContext context) {
-    switch (context) {
-      case RefreshContext.mainScreen:
-      case RefreshContext.webViewPage:
-        return '// Standard hide - no special positioning';
-      case RefreshContext.sheetWebView:
-        return "refreshDiv.style.transform = 'translateX(-50%) translateY(-100px)';";
-    }
-  }
-
-  String _getDoRefreshLogic(RefreshContext context) {
-    switch (context) {
-      case RefreshContext.mainScreen:
-      case RefreshContext.webViewPage:
-        return '// Standard refresh positioning';
-      case RefreshContext.sheetWebView:
-        return "refreshDiv.style.transform = 'translateX(-50%) translateY(20px)';";
     }
   }
 }

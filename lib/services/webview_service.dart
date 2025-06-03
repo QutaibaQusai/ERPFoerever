@@ -1,5 +1,6 @@
 // lib/services/webview_service.dart
 import 'package:ERPForever/services/app_data_service.dart';
+import 'package:ERPForever/services/config_service.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
@@ -286,7 +287,16 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildCont
 }
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
-
+// NEW: Handle loggedin:// protocol for config updates
+  if (request.url.startsWith('loggedin://')) {
+    _handleLoginConfigRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+  // Handle theme requests
+  if (request.url.startsWith('dark-mode://')) {
+    _handleThemeChange('dark');
+    return NavigationDecision.prevent;
+  } 
     // Handle theme requests
     if (request.url.startsWith('dark-mode://')) {
       _handleThemeChange('dark');
@@ -2224,7 +2234,90 @@ int getStackSize() {
 }
 
 
+void _handleLoginConfigRequest(String loginUrl) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for login config request');
+    return;
+  }
 
+  debugPrint('🔗 WebView login config request: $loginUrl');
+  
+  try {
+    // Parse the config URL
+    final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
+    
+    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+      final configUrl = parsedData['configUrl']!;
+      final userRole = parsedData['role'];
+      
+      // Show loading dialog
+      showDialog(
+        context: _currentContext!,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Updating configuration...'),
+                if (userRole != null) ...[
+                  SizedBox(height: 8),
+                  Text('Role: $userRole', style: TextStyle(fontSize: 12)),
+                ],
+              ],
+            ),
+          );
+        },
+      );
+      
+      // Set the dynamic config URL
+      await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
+      
+      // Hide loading dialog
+      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+      
+      // Show success feedback
+      if (_currentContext != null) {
+        ScaffoldMessenger.of(_currentContext!).showSnackBar(
+          SnackBar(
+            content: Text('Configuration updated!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      
+    } else {
+      if (_currentContext != null) {
+        ScaffoldMessenger.of(_currentContext!).showSnackBar(
+          SnackBar(
+            content: Text('Invalid configuration URL'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  } catch (e) {
+    debugPrint('❌ Error in WebView config request: $e');
+    
+    if (_currentContext != null) {
+      // Hide loading dialog if open
+      if (Navigator.canPop(_currentContext!)) {
+        Navigator.of(_currentContext!).pop();
+      }
+      
+      ScaffoldMessenger.of(_currentContext!).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
 
 
 void clearCurrentController() {

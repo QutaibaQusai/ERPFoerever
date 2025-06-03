@@ -798,6 +798,17 @@ void _injectNativePullToRefresh(WebViewController controller, int index) {
 
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint("Navigation request: ${request.url}");
+    if (request.url.startsWith('loggedin://')) {
+    // If user is already logged in, treat this as a config update
+    _handleLoginConfigRequest(request.url);
+    return NavigationDecision.prevent;
+  }
+    // NEW: Handle external URLs with ?external=1 parameter
+  if (request.url.contains('?external=1')) {
+    _handleExternalNavigation(request.url);
+    return NavigationDecision.prevent;
+  }
+
 
     // NEW: Handle external URLs with ?external=1 parameter
     if (request.url.contains('?external=1')) {
@@ -1547,6 +1558,93 @@ void _sendThemeUpdateToController(WebViewController controller, String theme, in
       });
     }
   }
+  void _handleLoginConfigRequest(String loginUrl) async {
+  debugPrint('🔗 Login config request received: $loginUrl');
+  
+  try {
+    // Parse the config URL
+    final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
+    
+    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+      final configUrl = parsedData['configUrl']!;
+      final userRole = parsedData['role'];
+      
+      debugPrint('✅ Processing config URL: $configUrl');
+      debugPrint('👤 User role: ${userRole ?? 'not specified'}');
+      
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text(
+                  'Updating configuration...',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+                if (userRole != null) ...[
+                  SizedBox(height: 8),
+                  Text(
+                    'Role: $userRole',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      );
+      
+      // Set the dynamic config URL
+      await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
+      
+      // Hide loading dialog
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Configuration updated successfully!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      
+    } else {
+      debugPrint('❌ Failed to parse config URL');
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Invalid configuration URL'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  } catch (e) {
+    debugPrint('❌ Error handling login config request: $e');
+    
+    // Hide loading dialog if open
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error updating configuration: ${e.toString()}'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+}
 
   @override
   void dispose() {

@@ -1,4 +1,4 @@
-// lib/services/config_service.dart
+// lib/services/config_service.dart - Updated with dynamic URL support
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,20 +17,86 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // Configuration URLs
-  static const String _remoteConfigUrl = 'https://mobile.erpforever.com/config';
+  static const String _defaultRemoteConfigUrl = 'https://mobile.erpforever.com/config';
   static const String _localConfigPath = 'assets/config.json';
   static const String _cacheKey = 'cached_config';
   static const String _cacheTimestampKey = 'config_cache_timestamp';
-  static const Duration _cacheExpiry = Duration(hours: 1); // Cache for 1 hour (more responsive)
+  static const String _dynamicConfigUrlKey = 'dynamic_config_url'; // NEW: Store dynamic URL
+  static const String _userRoleKey = 'user_role'; // NEW: Store user role
+  static const Duration _cacheExpiry = Duration(hours: 1);
 
   AppConfigModel? _config;
   bool _isLoading = false;
   String? _error;
+  String? _dynamicConfigUrl; // NEW: Current dynamic config URL
+  String? _userRole; // NEW: Current user role
 
   AppConfigModel? get config => _config;
   bool get isLoading => _isLoading;
   bool get isLoaded => _config != null;
   String? get error => _error;
+  String? get currentConfigUrl => _dynamicConfigUrl ?? _defaultRemoteConfigUrl; // NEW: Get current URL
+  String? get userRole => _userRole; // NEW: Get user role
+
+  /// NEW: Set dynamic configuration URL from login
+  Future<void> setDynamicConfigUrl(String configUrl, {String? role}) async {
+    try {
+      debugPrint('🔄 Setting dynamic config URL: $configUrl');
+      debugPrint('👤 User role: ${role ?? 'not specified'}');
+
+      _dynamicConfigUrl = configUrl;
+      _userRole = role;
+
+      // Save to SharedPreferences for persistence
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_dynamicConfigUrlKey, configUrl);
+      if (role != null) {
+        await prefs.setString(_userRoleKey, role);
+      }
+
+      debugPrint('✅ Dynamic config URL saved and will be used for next config load');
+      
+      // Optionally reload config immediately with new URL
+      await loadConfig();
+      
+    } catch (e) {
+      debugPrint('❌ Error setting dynamic config URL: $e');
+    }
+  }
+
+  /// NEW: Load saved dynamic config URL
+  Future<void> _loadSavedDynamicConfigUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _dynamicConfigUrl = prefs.getString(_dynamicConfigUrlKey);
+      _userRole = prefs.getString(_userRoleKey);
+      
+      if (_dynamicConfigUrl != null) {
+        debugPrint('📱 Loaded saved dynamic config URL: $_dynamicConfigUrl');
+        debugPrint('👤 Loaded saved user role: $_userRole');
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading saved dynamic config URL: $e');
+    }
+  }
+
+  /// NEW: Clear dynamic config URL (e.g., on logout)
+  Future<void> clearDynamicConfigUrl() async {
+    try {
+      debugPrint('🧹 Clearing dynamic config URL');
+      
+      _dynamicConfigUrl = null;
+      _userRole = null;
+      
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_dynamicConfigUrlKey);
+      await prefs.remove(_userRoleKey);
+      
+      debugPrint('✅ Dynamic config URL cleared, will use default URL');
+    } catch (e) {
+      debugPrint('❌ Error clearing dynamic config URL: $e');
+    }
+  }
 
   /// Main method to load configuration with fallback strategy
   Future<void> loadConfig() async {
@@ -40,8 +106,11 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
 
       debugPrint('🔄 Starting configuration loading process...');
+      
+      // NEW: Load saved dynamic URL first
+      await _loadSavedDynamicConfigUrl();
 
-      // Strategy 1: Try remote configuration first
+      // Strategy 1: Try remote configuration first (using dynamic URL if available)
       bool remoteSuccess = await _tryLoadRemoteConfig();
       
       if (remoteSuccess) {
@@ -82,18 +151,29 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Try to load configuration from remote URL
+  /// Try to load configuration from remote URL (UPDATED to use dynamic URL)
   Future<bool> _tryLoadRemoteConfig() async {
     try {
-      debugPrint('🌐 Fetching remote configuration from: $_remoteConfigUrl');
+      // Use dynamic URL if available, otherwise use default
+      final configUrl = _dynamicConfigUrl ?? _defaultRemoteConfigUrl;
+      
+      debugPrint('🌐 Fetching remote configuration from: $configUrl');
+      debugPrint('👤 User role: ${_userRole ?? 'not specified'}');
+
+      // Build headers with user role if available
+      final headers = {
+        'User-Agent': 'ERPForever-Flutter-App/1.0',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache',
+      };
+      
+      if (_userRole != null) {
+        headers['X-User-Role'] = _userRole!;
+      }
 
       final response = await http.get(
-        Uri.parse(_remoteConfigUrl),
-        headers: {
-          'User-Agent': 'ERPForever-Flutter-App/1.0',
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache',
-        },
+        Uri.parse(configUrl),
+        headers: headers,
       ).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
@@ -106,6 +186,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
         debugPrint('📱 Main Icons: ${_config!.mainIcons.length}');
         debugPrint('📋 Sheet Icons: ${_config!.sheetIcons.length}');
         debugPrint('🌍 Direction: ${_config!.theme.direction}');
+        debugPrint('🔗 Config source: ${_dynamicConfigUrl != null ? 'DYNAMIC' : 'DEFAULT'}');
         
         return true;
       } else {
@@ -118,7 +199,55 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Try to load configuration from cache
+  /// NEW: Parse config URL from loggedin:// protocol
+  static Map<String, String> parseLoginConfigUrl(String loginUrl) {
+    try {
+      debugPrint('🔍 Parsing login config URL: $loginUrl');
+      
+      if (!loginUrl.startsWith('loggedin://')) {
+        debugPrint('❌ Invalid login URL format');
+        return {};
+      }
+      
+      // Remove the protocol
+      String cleanUrl = loginUrl.replaceFirst('loggedin://', '');
+      
+      // Parse the URL parts
+      Uri uri = Uri.parse('https://$cleanUrl'); // Add dummy scheme for parsing
+      
+      // Extract the base config URL
+      String configPath = uri.path;
+      if (configPath.isEmpty) {
+        configPath = '/config.php'; // Default path
+      }
+      
+      // Build the full config URL
+      String baseUrl = 'https://mobile.erpforever.com'; // Your base domain
+      String fullConfigUrl = '$baseUrl$configPath';
+      
+      // Add query parameters if they exist
+      if (uri.queryParameters.isNotEmpty) {
+        fullConfigUrl += '?${uri.query}';
+      }
+      
+      // Extract role from query parameters
+      String? role = uri.queryParameters['role'];
+      
+      debugPrint('✅ Parsed config URL: $fullConfigUrl');
+      debugPrint('👤 Extracted role: ${role ?? 'not specified'}');
+      
+      return {
+        'configUrl': fullConfigUrl,
+        if (role != null) 'role': role,
+      };
+      
+    } catch (e) {
+      debugPrint('❌ Error parsing login config URL: $e');
+      return {};
+    }
+  }
+
+  /// Try to load configuration from cache (keeping existing implementation)
   Future<bool> _tryLoadCachedConfig() async {
     try {
       debugPrint('💾 Checking cached configuration...');
@@ -155,7 +284,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Try to load configuration from local assets
+  /// Try to load configuration from local assets (keeping existing implementation)
   Future<bool> _tryLoadLocalConfig() async {
     try {
       debugPrint('📱 Loading local configuration from assets...');
@@ -176,7 +305,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Cache the current configuration
+  /// Cache the current configuration (keeping existing implementation)
   Future<void> _cacheConfiguration() async {
     try {
       if (_config == null) return;
@@ -196,7 +325,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Force reload configuration (bypass cache)
+  /// Force reload configuration (keeping existing implementation but updated)
   Future<void> reloadConfig({bool bypassCache = false}) async {
     if (bypassCache) {
       await _clearCache();
@@ -204,7 +333,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     await loadConfig();
   }
 
-  /// Clear cached configuration
+  /// Clear cached configuration (keeping existing implementation)
   Future<void> _clearCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -216,7 +345,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Force remote configuration reload
+  /// Force remote configuration reload (keeping existing implementation but updated)
   Future<bool> forceRemoteReload() async {
     debugPrint('🔄 Force reloading from remote...');
     
@@ -240,7 +369,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Update configuration at runtime
+  /// Update configuration at runtime (keeping existing implementation)
   void updateConfig(AppConfigModel newConfig) {
     _config = newConfig;
     notifyListeners();
@@ -250,7 +379,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     _cacheConfiguration();
   }
 
-  /// Get cache status
+  /// Get cache status (keeping existing implementation)
   Future<Map<String, dynamic>> getCacheStatus() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -282,7 +411,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Load default configuration as fallback
+  /// Load default configuration as fallback (keeping existing implementation)
   void _loadDefaultConfig() {
     _config = AppConfigModel(
       lang: 'en', // NEW: Default language
@@ -308,7 +437,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     debugPrint('⚠️ Using default configuration as fallback');
   }
 
-  // Existing helper methods remain the same
+  // Keep all existing helper methods...
   Color getColorFromHex(String hexColor) {
     return Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
   }
@@ -346,7 +475,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     return mainIcon?.headerIcons != null && mainIcon!.headerIcons!.isNotEmpty;
   }
 
-  /// Handle app lifecycle changes
+  /// Handle app lifecycle changes (keeping existing implementation)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -357,7 +486,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Check for config updates when app resumes
+  /// Check for config updates when app resumes (keeping existing implementation)
   Future<void> _checkForConfigUpdates() async {
     try {
       // Only check if we have a cached config and it's been more than 5 minutes

@@ -1,9 +1,11 @@
+// lib/pages/login_page.dart - Updated with config URL support
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:ERPForever/widgets/loading_widget.dart';
 import 'package:ERPForever/pages/main_screen.dart';
 import 'package:ERPForever/services/auth_service.dart';
+import 'package:ERPForever/services/config_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -44,9 +46,9 @@ class _LoginPageState extends State<LoginPage> {
           onNavigationRequest: (NavigationRequest request) {
             debugPrint('Login Navigation request: ${request.url}');
             
-            // Check if user is logged in
+            // NEW: Check for loggedin:// protocol with config URL
             if (request.url.startsWith('loggedin://')) {
-              _handleLoginSuccess();
+              _handleLoginSuccess(request.url);
               return NavigationDecision.prevent;
             }
             
@@ -65,19 +67,124 @@ class _LoginPageState extends State<LoginPage> {
       ..loadRequest(Uri.parse('https://mobile.erpforever.com/login'));
   }
 
-  void _handleLoginSuccess() async {
-    debugPrint('✅ User logged in successfully');
+  /// UPDATED: Handle login success with config URL support
+  void _handleLoginSuccess(String loginUrl) async {
+    debugPrint('✅ User logged in successfully with URL: $loginUrl');
     
-    final authService = Provider.of<AuthService>(context, listen: false);
-    await authService.login();
-    
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => const MainScreen(),
-        ),
-      );
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      
+      // Parse the login URL to extract config information
+      String? configUrl;
+      
+      if (loginUrl.startsWith('loggedin://')) {
+        // Extract everything after loggedin:// as the config URL
+        configUrl = loginUrl;
+        debugPrint('🔗 Config URL detected: $configUrl');
+        
+        // Show loading indicator for config processing
+        if (mounted) {
+          setState(() {
+            _isLoading = true;
+          });
+        }
+        
+        _showConfigProcessingDialog();
+      }
+      
+      // Login with config URL
+      await authService.login(configUrl: configUrl);
+      
+      // Hide any loading dialogs
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              configUrl != null 
+                ? 'Logged in successfully! Loading your configuration...'
+                : 'Logged in successfully!'
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      
+      // Navigate to main screen
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const MainScreen(),
+          ),
+        );
+      }
+      
+    } catch (e) {
+      debugPrint('❌ Error during login process: $e');
+      
+      // Hide any loading dialogs
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+      
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Login error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  /// NEW: Show dialog while processing config URL
+  void _showConfigProcessingDialog() {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Processing your configuration...',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Setting up your personalized experience',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override

@@ -862,7 +862,7 @@ if (request.url.startsWith('toast://')) {
       }
 
       // Contacts requests
-      if (request.url.startsWith('get-contacts://')) {
+      if (request.url.startsWith('get-contacts')) {
         _handleContactsRequest();
         return NavigationDecision.prevent;
       }

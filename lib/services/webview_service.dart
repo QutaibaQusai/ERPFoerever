@@ -1158,20 +1158,15 @@ void _sendContactsToWebView(Map<String, dynamic> contactsData) {
     return;
   }
 
-  debugPrint(
-    '📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts',
-  );
+  debugPrint('📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts');
 
   final success = contactsData['success'] ?? false;
-  final error = (contactsData['error'] ?? '').replaceAll('"', '\\"').replaceAll('\n', '\\n');
-  final errorCode = contactsData['errorCode'] ?? '';
   final totalCount = contactsData['totalCount'] ?? 0;
 
   // Convert contacts to proper JSON string
   String contactsJson = '[]';
   if (contactsData['contacts'] != null && success) {
     try {
-      // Properly format contacts as JSON
       final contacts = contactsData['contacts'] as List;
       final jsonString = jsonEncode(contacts);
       contactsJson = jsonString;
@@ -1186,56 +1181,62 @@ void _sendContactsToWebView(Map<String, dynamic> contactsData) {
     try {
       console.log("📞 Contacts received: Success=$success, Count=$totalCount");
       
-      var contactsResult = {
-        success: $success,
-        contacts: $contactsJson,
-        totalCount: $totalCount,
-        error: "$error",
-        errorCode: "$errorCode"
-      };
-      
-      // 🆕 NEW: Call the getContacts(json_object) function with the contacts array
+      // 🆕 ONLY call getContacts - NO toasts/alerts
       if (typeof getContacts === 'function') {
         console.log("✅ Calling getContacts() with contacts array");
         try {
-          // Call getContacts with the actual contacts array (not the wrapper object)
-          getContacts(contactsResult.contacts);
-          console.log("✅ getContacts() called successfully with " + contactsResult.contacts.length + " contacts");
+          getContacts($contactsJson);
+          console.log("✅ getContacts() called successfully with " + $contactsJson.length + " contacts");
         } catch (error) {
           console.error("❌ Error calling getContacts():", error);
         }
       } else {
-        console.log("⚠️ getContacts() function not found, using fallback methods");
+        console.log("⚠️ getContacts() function not found - define it in your web page");
+        console.log("💡 Add this to your web page: function getContacts(contacts) { console.log('Received contacts:', contacts); }");
       }
       
       // Keep existing callback functions for backward compatibility
       if (typeof getContactsCallback === 'function') {
         console.log("✅ Calling getContactsCallback()");
-        getContactsCallback($success, contactsResult.contacts, $totalCount, "$error", "$errorCode");
+        getContactsCallback($success, $contactsJson, $totalCount, "", "");
       } else if (typeof window.handleContactsResult === 'function') {
         console.log("✅ Calling window.handleContactsResult()");
-        window.handleContactsResult(contactsResult);
+        window.handleContactsResult({
+          success: $success,
+          contacts: $contactsJson,
+          totalCount: $totalCount
+        });
       } else if (typeof handleContactsResult === 'function') {
         console.log("✅ Calling handleContactsResult()");
-        handleContactsResult(contactsResult);
+        handleContactsResult({
+          success: $success,
+          contacts: $contactsJson,
+          totalCount: $totalCount
+        });
       }
       
       // Always dispatch event as fallback
-      var event = new CustomEvent('contactsReceived', { detail: contactsResult });
+      var event = new CustomEvent('contactsReceived', { 
+        detail: {
+          contacts: $contactsJson,
+          totalCount: $totalCount,
+          timestamp: new Date().toISOString()
+        }
+      });
       document.dispatchEvent(event);
       console.log("📨 contactsReceived event dispatched");
       
       // 🆕 NEW: Also dispatch a specific event for the getContacts function
-      if (contactsResult.success && contactsResult.contacts.length > 0) {
+      if ($success && $contactsJson.length > 0) {
         var getContactsEvent = new CustomEvent('getContactsResult', { 
           detail: {
-            contacts: contactsResult.contacts,
+            contacts: $contactsJson,
             totalCount: $totalCount,
             timestamp: new Date().toISOString()
           }
         });
         document.dispatchEvent(getContactsEvent);
-        console.log("📨 getContactsResult event dispatched with " + contactsResult.contacts.length + " contacts");
+        console.log("📨 getContactsResult event dispatched with " + $contactsJson.length + " contacts");
       }
       
     } catch (error) {
@@ -1253,42 +1254,10 @@ void _sendContactsToWebView(Map<String, dynamic> contactsData) {
     }
   ''');
 
-  // Show feedback to user using toast protocol instead of SnackBar
-  if (_currentContext != null) {
-    if (contactsData['success']) {
-      // Use toast:// for success messages
-      _currentController!.runJavaScript('''
-        if (window.ToastManager) {
-          window.ToastManager.postMessage('toast://Loaded ${contactsData['totalCount']} contacts');
-        } else {
-          window.location.href = 'toast://Loaded ${contactsData['totalCount']} contacts';
-        }
-      ''');
-    } else {
-      // Use alert:// for errors that need user attention
-      final errorMessage = contactsData['error'] ?? 'Failed to load contacts';
-      final escapedError = errorMessage.replaceAll('"', '\\"').replaceAll('\n', '\\n');
-      
-      _currentController!.runJavaScript('''
-        if (window.AlertManager) {
-          window.AlertManager.postMessage('alert://' + encodeURIComponent('Contacts Error: $escapedError'));
-        } else {
-          window.location.href = 'alert://' + encodeURIComponent('Contacts Error: $escapedError');
-        }
-      ''');
-      
-      // For permission errors, also show settings action
-      if (contactsData['errorCode'] == 'PERMISSION_DENIED_FOREVER') {
-        _currentController!.runJavaScript('''
-          setTimeout(function() {
-            if (window.AlertManager) {
-              window.AlertManager.postMessage('alert://' + encodeURIComponent('Please go to Settings > Apps > ERPForever > Permissions and enable Contacts access'));
-            }
-          }, 2000);
-        ''');
-      }
-    }
-  }
+  // ❌ REMOVED: All Flutter toast/snackbar code that was here before
+  // ❌ REMOVED: All alert protocol calls 
+  // ❌ REMOVED: All ToastManager calls
+  // ✅ NOW: Only calls getContacts() function in WebView - no Flutter UI feedback
 }
 void _handleLocationRequest(String message) async {
   if (_currentContext == null || _currentController == null) {

@@ -219,29 +219,101 @@ void _handleToastRequest(String message) {
       return;
     }
 
-    // Show toast/snackbar
-    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-      SnackBar(
-        content: Text(toastMessage),
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.green, // You can make this configurable
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {
-            ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
-          },
-        ),
-      ),
-    );
+    // ✅ PURE WEB SCRIPT APPROACH - No native Flutter UI
+    if (_currentController != null) {
+      _currentController!.runJavaScript('''
+        try {
+          console.log('🍞 Toast message received in WebView: $toastMessage');
+          
+          // Try to find and call web-based toast functions
+          if (typeof showWebToast === 'function') {
+            showWebToast('$toastMessage');
+            console.log('✅ Called showWebToast() function');
+          } else if (typeof window.showToast === 'function') {
+            window.showToast('$toastMessage');
+            console.log('✅ Called window.showToast() function');
+          } else if (typeof displayToast === 'function') {
+            displayToast('$toastMessage');
+            console.log('✅ Called displayToast() function');
+          } else {
+            // Fallback: Create simple web toast
+            console.log('💡 No toast function found, creating simple web toast...');
+            
+            // Remove any existing toast
+            var existingToast = document.getElementById('flutter-toast');
+            if (existingToast) existingToast.remove();
+            
+            // Create toast element
+            var toastDiv = document.createElement('div');
+            toastDiv.id = 'flutter-toast';
+            toastDiv.innerHTML = '$toastMessage';
+            toastDiv.style.cssText = \`
+              position: fixed;
+              top: 20px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: #2d5a2d;
+              color: white;
+              padding: 12px 24px;
+              border-radius: 8px;
+              z-index: 10000;
+              font-size: 14px;
+              font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+              animation: slideDown 0.3s ease-out;
+            \`;
+            
+            // Add CSS animation
+            if (!document.getElementById('toast-styles')) {
+              var styles = document.createElement('style');
+              styles.id = 'toast-styles';
+              styles.innerHTML = \`
+                @keyframes slideDown {
+                  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+                }
+                @keyframes slideUp {
+                  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+                  to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                }
+              \`;
+              document.head.appendChild(styles);
+            }
+            
+            document.body.appendChild(toastDiv);
+            
+            // Auto-remove after 3 seconds
+            setTimeout(function() {
+              if (toastDiv) {
+                toastDiv.style.animation = 'slideUp 0.3s ease-out';
+                setTimeout(function() {
+                  if (toastDiv && toastDiv.parentNode) {
+                    toastDiv.parentNode.removeChild(toastDiv);
+                  }
+                }, 300);
+              }
+            }, 3000);
+            
+            console.log('✅ Web toast displayed: $toastMessage');
+          }
+          
+          // Dispatch toast event for any listeners
+          var toastEvent = new CustomEvent('toastShown', { 
+            detail: { message: '$toastMessage' }
+          });
+          document.dispatchEvent(toastEvent);
+          
+        } catch (error) {
+          console.error('❌ Error handling toast in WebView:', error);
+        }
+      ''');
+    }
 
-    debugPrint('✅ Toast shown: $toastMessage');
+    debugPrint('✅ Toast processed via web scripts: $toastMessage');
   } catch (e) {
     debugPrint('❌ Error handling toast request: $e');
   }
 }
-
 String _extractToastMessage(String url) {
   try {
     // Remove protocol
@@ -568,13 +640,13 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
   ''');
 }
 
- void _handlePdfSaveRequest(String message) async {
+void _handlePdfSaveRequest(String message) async {
   if (_currentContext == null) {
     debugPrint('❌ No context available for PDF save request');
     return;
   }
 
-  debugPrint('📄 Processing PDF save request: $message');
+  debugPrint('📄 Processing PDF save request silently...');
 
   String pdfUrl = PdfSaverService().extractPdfUrl(message);
 
@@ -588,8 +660,8 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
     return;
   }
 
-  // No loading dialog - just process
-  debugPrint('⬇️ Starting PDF download...');
+  // NO LOADING DIALOG - just process silently
+  debugPrint('⬇️ Starting PDF download silently...');
 
   try {
     Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(message);
@@ -766,7 +838,7 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     return;
   }
 
-  debugPrint('🖼️ Processing image save request: $message');
+  debugPrint('🖼️ Processing image save request silently...');
 
   String imageUrl = ImageSaverService().extractImageUrl(message);
 
@@ -780,8 +852,8 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     return;
   }
 
-  // No loading dialog - just process
-  debugPrint('⬇️ Starting image download...');
+  // NO LOADING DIALOG - just process silently
+  debugPrint('⬇️ Starting image download silently...');
 
   try {
     Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(message);
@@ -796,7 +868,6 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     });
   }
 }
-
 
   void _showImageSaveLoadingDialog(String imageUrl) {
     if (_currentContext == null) return;
@@ -908,10 +979,10 @@ void _handleScreenshotRequest(String message) async {
     return;
   }
 
-  debugPrint('📸 Processing screenshot request...');
+  debugPrint('📸 Processing screenshot request silently...');
 
-  // No loading dialog - just process
-  await Future.delayed(Duration(milliseconds: 800));
+  // NO LOADING DIALOG - just process silently
+  await Future.delayed(Duration(milliseconds: 500)); // Small delay for UI
 
   try {
     Map<String, dynamic> screenshotResult = await ScreenshotService()
@@ -1036,10 +1107,10 @@ void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
     return;
   }
 
-  debugPrint('📞 Processing contacts request...');
+  debugPrint('📞 Processing contacts request silently...');
 
   try {
-    // No loading dialog - just process
+    // NO LOADING DIALOG - just process silently
     Map<String, dynamic> contactsResult = await AppContactsService().getAllContacts();
     _sendContactsToWebView(contactsResult);
   } catch (e) {
@@ -1195,10 +1266,10 @@ void _handleLocationRequest(String message) async {
     return;
   }
 
-  debugPrint('🌍 Processing location request...');
+  debugPrint('🌍 Processing location request silently...');
 
   try {
-    // No loading dialog - just process
+    // NO LOADING DIALOG - just process silently
     Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
     _sendLocationToWebView(locationResult);
   } catch (e) {

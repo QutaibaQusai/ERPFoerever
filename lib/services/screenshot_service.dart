@@ -1,4 +1,4 @@
-// lib/services/screenshot_service.dart
+// lib/services/screenshot_service.dart - FIXED: No native dialogs
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -16,13 +16,13 @@ class ScreenshotService {
 
   ScreenshotController get controller => _screenshotController;
 
-  /// Take screenshot and return options for the user
+  /// Take screenshot and return options for the user - NO NATIVE DIALOGS
   Future<Map<String, dynamic>> takeScreenshot({
     double? pixelRatio,
     Duration? delay,
   }) async {
     try {
-      debugPrint('📸 Taking screenshot...');
+      debugPrint('📸 Taking screenshot silently...');
 
       // Add delay if specified
       if (delay != null) {
@@ -63,10 +63,10 @@ class ScreenshotService {
     }
   }
 
-  /// Save screenshot to gallery
+  /// Save screenshot to gallery - NO NATIVE DIALOGS
   Future<Map<String, dynamic>> saveToGallery(Uint8List imageBytes) async {
     try {
-      debugPrint('💾 Saving screenshot to gallery...');
+      debugPrint('💾 Saving screenshot to gallery silently...');
 
       // Check if we have permission to save to gallery
       if (!await Gal.hasAccess()) {
@@ -112,7 +112,7 @@ class ScreenshotService {
     }
   }
 
-  /// Share screenshot
+  /// Share screenshot - NO NATIVE DIALOGS
   Future<Map<String, dynamic>> shareScreenshot(Uint8List imageBytes) async {
     try {
       debugPrint('📤 Sharing screenshot...');
@@ -143,10 +143,10 @@ class ScreenshotService {
     }
   }
 
-  /// Save screenshot to app documents directory
+  /// Save screenshot to app documents directory - NO NATIVE DIALOGS
   Future<Map<String, dynamic>> saveToDocuments(Uint8List imageBytes) async {
     try {
-      debugPrint('📁 Saving screenshot to documents...');
+      debugPrint('📁 Saving screenshot to documents silently...');
 
       final directory = await getApplicationDocumentsDirectory();
       final fileName =
@@ -172,7 +172,7 @@ class ScreenshotService {
     }
   }
 
-  /// Get gallery permission status
+  // Keep all remaining helper methods unchanged...
   Future<Map<String, dynamic>> getGalleryPermissionStatus() async {
     try {
       bool hasAccess = await Gal.hasAccess();
@@ -184,7 +184,6 @@ class ScreenshotService {
     }
   }
 
-  /// Request gallery permission
   Future<bool> requestGalleryPermission() async {
     try {
       return await Gal.requestAccess();
@@ -194,7 +193,6 @@ class ScreenshotService {
     }
   }
 
-  /// Open app settings
   Future<bool> openAppSettings() async {
     try {
       return await openAppSettings();
@@ -204,7 +202,7 @@ class ScreenshotService {
     }
   }
 
-  /// Take screenshot with custom options and handle user choice
+  /// Take screenshot with custom options and handle user choice - NO NATIVE DIALOGS
   Future<Map<String, dynamic>> takeScreenshotWithOptions({
     double? pixelRatio,
     Duration? delay,

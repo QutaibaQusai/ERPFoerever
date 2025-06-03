@@ -1,4 +1,4 @@
-// lib/services/pdf_saver_service.dart
+// lib/services/pdf_saver_service.dart - FIXED: No native dialogs
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -13,7 +13,7 @@ class PdfSaverService {
   factory PdfSaverService() => _instance;
   PdfSaverService._internal();
 
-  /// Save PDF from URL to device downloads/documents
+  /// Save PDF from URL to device downloads/documents - NO NATIVE DIALOGS
   Future<Map<String, dynamic>> savePdfFromUrl(String pdfUrl) async {
     try {
       debugPrint('📄 Starting PDF save from URL: $pdfUrl');
@@ -57,15 +57,15 @@ class PdfSaverService {
         };
       }
 
-      // Download PDF
-      debugPrint('⬇️ Downloading PDF...');
+      // Download PDF - NO LOADING DIALOG
+      debugPrint('⬇️ Downloading PDF silently...');
       final response = await http.get(
         Uri.parse(cleanUrl),
         headers: {
           'User-Agent': 'ERPForever-Flutter-App/1.0',
           'Accept': 'application/pdf,*/*',
         },
-      ).timeout(Duration(seconds: 60)); // Longer timeout for PDFs
+      ).timeout(Duration(seconds: 60));
 
       if (response.statusCode != 200) {
         debugPrint('❌ Failed to download PDF: ${response.statusCode}');
@@ -166,7 +166,7 @@ class PdfSaverService {
     }
   }
 
-  /// Check if content is a valid PDF
+  // Keep all existing helper methods unchanged...
   bool _isPdfContent(Uint8List bytes) {
     if (bytes.length < 4) return false;
     
@@ -177,7 +177,6 @@ class PdfSaverService {
            bytes[3] == 0x46;   // F
   }
 
-  /// Generate PDF filename
   String _generatePdfFileName(String url) {
     try {
       // Try to get filename from URL
@@ -196,7 +195,7 @@ class PdfSaverService {
     return 'ERPForever_PDF_${DateTime.now().millisecondsSinceEpoch}.pdf';
   }
 
-  /// Open saved PDF file
+  /// Open saved PDF file - NO NATIVE DIALOG
   Future<Map<String, dynamic>> openPdf(String filePath) async {
     try {
       debugPrint('📖 Opening PDF: $filePath');
@@ -228,7 +227,7 @@ class PdfSaverService {
     }
   }
 
-  /// Get storage permission status
+  // Keep all remaining methods unchanged...
   Future<Map<String, dynamic>> getStoragePermissionStatus() async {
     try {
       PermissionStatus permission = await Permission.storage.status;
@@ -251,7 +250,6 @@ class PdfSaverService {
     }
   }
 
-  /// Open app settings
   Future<bool> openAppSettings() async {
     try {
       return await openAppSettings();
@@ -261,7 +259,6 @@ class PdfSaverService {
     }
   }
 
-  /// Extract PDF URL from save-pdf:// protocol
   String extractPdfUrl(String savePdfUrl) {
     return savePdfUrl
         .replaceAll('save-pdf://', '')
@@ -269,7 +266,6 @@ class PdfSaverService {
         .replaceAll('http//', 'http://');
   }
 
-  /// Validate if URL is a PDF
   bool isValidPdfUrl(String url) {
     String lowerUrl = url.toLowerCase();
     
@@ -279,7 +275,6 @@ class PdfSaverService {
            lowerUrl.contains('document');
   }
 
-  /// Get file size in human readable format
   String formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -287,7 +282,6 @@ class PdfSaverService {
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
-  /// List saved PDFs
   Future<List<Map<String, dynamic>>> getSavedPdfs() async {
     try {
       final directory = await getApplicationDocumentsDirectory();

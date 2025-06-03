@@ -704,7 +704,7 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
     );
   }
 
-  void _sendPdfSaveToWebView(Map<String, dynamic> result) {
+ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for PDF save result');
       return;
@@ -748,9 +748,30 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
         handlePdfSaveResult(pdfSaveResult);
       } else {
         console.log("✅ Using fallback - triggering event");
-        
         var event = new CustomEvent('pdfSaved', { detail: pdfSaveResult });
         document.dispatchEvent(event);
+      }
+      
+      // Use protocol-based notifications instead of SnackBars
+      if ($success) {
+        const fileSize = $fileSize;
+        const sizeText = fileSize > 0 ? ' (' + Math.round(fileSize / 1024) + ' KB)' : '';
+        const successMessage = '$message' + sizeText;
+        
+        // Use toast:// for success messages
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent(successMessage));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent(successMessage);
+        }
+      } else {
+        // Use alert:// for errors that need user attention
+        const errorMessage = 'PDF Save Failed: $error';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+        }
       }
       
     } catch (error) {
@@ -758,54 +779,7 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
     }
   ''');
 
-    // Show feedback to user
-    if (_currentContext != null) {
-      String feedbackMessage;
-      Color backgroundColor;
-
-      if (result['success']) {
-        final sizeFormatted = PdfSaverService().formatFileSize(
-          result['fileSize'] ?? 0,
-        );
-        feedbackMessage =
-            '${result['message'] ?? 'PDF saved successfully'} ($sizeFormatted)';
-        backgroundColor = Colors.green;
-      } else {
-        feedbackMessage = result['error'] ?? 'Failed to save PDF';
-        backgroundColor = Colors.red;
-      }
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text(feedbackMessage),
-          duration: Duration(seconds: 4),
-          backgroundColor: backgroundColor,
-          action:
-              !result['success'] &&
-                      result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-                  ? SnackBarAction(
-                    label: 'Settings',
-                    textColor: Colors.white,
-                    onPressed: () async {
-                      bool opened = await PdfSaverService().openAppSettings();
-                      if (!opened) {
-                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Please enable storage permission in Settings',
-                            ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      }
-                    },
-                  )
-                  : null,
-        ),
-      );
-    }
   }
-
   /// Handle image save requests
   void _handleImageSaveRequest(String message) async {
     if (_currentContext == null) {
@@ -893,8 +867,7 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       },
     );
   }
-
-  void _sendImageSaveToWebView(Map<String, dynamic> result) {
+void _sendImageSaveToWebView(Map<String, dynamic> result) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for image save result');
       return;
@@ -936,9 +909,27 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
           handleImageSaveResult(imageSaveResult);
         } else {
           console.log("✅ Using fallback - triggering event");
-          
           var event = new CustomEvent('imageSaved', { detail: imageSaveResult });
           document.dispatchEvent(event);
+        }
+        
+        // Use protocol-based notifications instead of SnackBars
+        if ($success) {
+          // Use toast:// for success messages
+          const successMessage = '$message';
+          if (window.ToastManager) {
+            window.ToastManager.postMessage('toast://' + encodeURIComponent(successMessage));
+          } else {
+            window.location.href = 'toast://' + encodeURIComponent(successMessage);
+          }
+        } else {
+          // Use alert:// for errors that need user attention
+          const errorMessage = 'Image Save Failed: $error';
+          if (window.AlertManager) {
+            window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+          } else {
+            window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+          }
         }
         
       } catch (error) {
@@ -946,50 +937,8 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       }
     ''');
 
-    // Show feedback to user
-    if (_currentContext != null) {
-      String feedbackMessage;
-      Color backgroundColor;
-
-      if (result['success']) {
-        feedbackMessage = result['message'] ?? 'Image saved successfully';
-        backgroundColor = Colors.green;
-      } else {
-        feedbackMessage = result['error'] ?? 'Failed to save image';
-        backgroundColor = Colors.red;
-      }
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text(feedbackMessage),
-          duration: Duration(seconds: 3),
-          backgroundColor: backgroundColor,
-          action:
-              !result['success'] &&
-                      result['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-                  ? SnackBarAction(
-                    label: 'Settings',
-                    textColor: Colors.white,
-                    onPressed: () async {
-                      bool opened = await ImageSaverService().openAppSettings();
-                      if (!opened) {
-                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Please enable storage permission in Settings',
-                            ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      }
-                    },
-                  )
-                  : null,
-        ),
-      );
-    }
+    // REMOVED: All SnackBar code - now using protocols instead
   }
-
   /// Handle screenshot requests - SIMPLIFIED VERSION
   void _handleScreenshotRequest(String message) async {
     if (_currentContext == null) {
@@ -1060,8 +1009,7 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       },
     );
   }
-
-  void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
+void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for screenshot result');
       return;
@@ -1099,9 +1047,35 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
           handleScreenshotResult(screenshotResult);
         } else {
           console.log("✅ Using fallback - triggering event");
-          
           var event = new CustomEvent('screenshotTaken', { detail: screenshotResult });
           document.dispatchEvent(event);
+        }
+        
+        // Use protocol-based notifications instead of SnackBars
+        if ($success) {
+          // Determine the right success message
+          let successMessage = 'Screenshot taken successfully';
+          
+          // Check if screenshot was actually saved to gallery
+          const actionsData = '${screenshotData['actions']?.toString() ?? ''}';
+          if (actionsData.includes('"gallery"') && actionsData.includes('"success":true')) {
+            successMessage = 'Screenshot saved to gallery';
+          }
+          
+          // Use toast:// for success messages  
+          if (window.ToastManager) {
+            window.ToastManager.postMessage('toast://' + encodeURIComponent(successMessage));
+          } else {
+            window.location.href = 'toast://' + encodeURIComponent(successMessage);
+          }
+        } else {
+          // Use alert:// for errors that need user attention
+          const errorMessage = 'Screenshot Failed: $error';
+          if (window.AlertManager) {
+            window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+          } else {
+            window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+          }
         }
         
       } catch (error) {
@@ -1109,58 +1083,8 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       }
     ''');
 
-    // Show simple feedback to user
-    if (_currentContext != null) {
-      String feedbackMessage;
-      Color backgroundColor;
-
-      if (screenshotData['success']) {
-        // Check if it was actually saved to gallery
-        if (screenshotData['actions'] != null &&
-            screenshotData['actions']['gallery'] != null &&
-            screenshotData['actions']['gallery']['success'] == true) {
-          feedbackMessage = 'Screenshot saved to gallery';
-        } else {
-          feedbackMessage = 'Screenshot taken successfully';
-        }
-        backgroundColor = Colors.green;
-      } else {
-        feedbackMessage =
-            screenshotData['error'] ?? 'Failed to take screenshot';
-        backgroundColor = Colors.red;
-      }
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text(feedbackMessage),
-          duration: Duration(seconds: 2),
-          backgroundColor: backgroundColor,
-          action:
-              !screenshotData['success'] &&
-                      screenshotData['errorCode'] == 'PERMISSION_DENIED_FOREVER'
-                  ? SnackBarAction(
-                    label: 'Settings',
-                    textColor: Colors.white,
-                    onPressed: () async {
-                      bool opened = await ScreenshotService().openAppSettings();
-                      if (!opened) {
-                        ScaffoldMessenger.of(_currentContext!).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Please enable storage permission in Settings',
-                            ),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      }
-                    },
-                  )
-                  : null,
-        ),
-      );
-    }
+    // REMOVED: All SnackBar code - now using protocols instead
   }
-
   /// Handle contacts requests
   void _handleContactsRequest(String message) async {
     if (_currentContext == null || _currentController == null) {

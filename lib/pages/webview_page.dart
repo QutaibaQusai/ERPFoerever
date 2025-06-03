@@ -995,6 +995,11 @@ void _reinjectWebViewServiceJS() {
       _handleExternalNavigation(request.url);
       return NavigationDecision.prevent;
     }
+     // ADD THIS: Handle toast requests
+  if (request.url.startsWith('toast://')) {
+    _handleToastRequest(request.url);
+    return NavigationDecision.prevent;
+  }
 
     // Handle new-web:// requests - PREVENT and open new WebView layer
     if (request.url.startsWith('new-web://')) {
@@ -1132,6 +1137,39 @@ void _reinjectWebViewServiceJS() {
       );
     }
   }
+  void _handleToastRequest(String url) {
+  debugPrint('🍞 Toast requested from WebView: $url');
+  
+  try {
+    // Extract message from the URL
+    String message = url.replaceFirst('toast://', '');
+    
+    // Decode URL encoding if present
+    message = Uri.decodeComponent(message);
+    
+    // Show the toast message
+    if (mounted && message.isNotEmpty) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+      
+      debugPrint('✅ Toast shown: $message');
+    } else {
+      debugPrint('❌ Empty toast message');
+    }
+  } catch (e) {
+    debugPrint('❌ Error handling toast request: $e');
+  }
+}
 
   // Handle new-web:// navigation by opening another WebViewPage
   void _handleNewWebNavigation(String url) {

@@ -172,7 +172,10 @@ class _WebViewSheetState extends State<WebViewSheet> {
       _handleNewWebNavigation(request.url);
       return NavigationDecision.prevent;
     }
-
+if (request.url.startsWith('toast://')) {
+    _handleToastRequest(request.url);
+    return NavigationDecision.prevent;
+  }
     // Handle new-sheet:// requests
     if (request.url.startsWith('new-sheet://')) {
       _handleSheetNavigation(request.url);
@@ -209,6 +212,39 @@ class _WebViewSheetState extends State<WebViewSheet> {
     // Allow normal navigation for other URLs
     return NavigationDecision.navigate;
   }
+  void _handleToastRequest(String url) {
+  debugPrint('🍞 Toast requested from WebViewSheet: $url');
+  
+  try {
+    // Extract message from the URL
+    String message = url.replaceFirst('toast://', '');
+    
+    // Decode URL encoding if present
+    message = Uri.decodeComponent(message);
+    
+    // Show the toast message
+    if (mounted && message.isNotEmpty) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.green,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
+      
+      debugPrint('✅ Toast shown in sheet: $message');
+    } else {
+      debugPrint('❌ Empty toast message');
+    }
+  } catch (e) {
+    debugPrint('❌ Error handling toast request in sheet: $e');
+  }
+}
 
   void _handleExternalNavigation(String url) {
     debugPrint('🌐 External navigation detected in WebViewSheet: $url');

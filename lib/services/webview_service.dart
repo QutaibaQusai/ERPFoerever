@@ -150,7 +150,13 @@ WebViewController createController(String url, [BuildContext? context]) {
         debugPrint('🚨 Alert message: ${message.message}');
         _handleAlertRequest(message.message);
       },
-    )
+    )..addJavaScriptChannel(
+  'ToastManager',
+  onMessageReceived: (JavaScriptMessage message) {
+    debugPrint('🍞 Toast message: ${message.message}');
+    _handleToastRequest(message.message);
+  },
+)
   ..setNavigationDelegate(
       NavigationDelegate(
         onPageStarted: (String url) {
@@ -189,7 +195,63 @@ WebViewController createController(String url, [BuildContext? context]) {
 
   return controller;
 }
+void _handleToastRequest(String message) {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for toast request');
+    return;
+  }
 
+  if (!_currentContext!.mounted) {
+    debugPrint('❌ Context is no longer mounted for toast request');
+    return;
+  }
+
+  debugPrint('🍞 Processing toast request: $message');
+
+  try {
+    // Extract toast message from URL
+    String toastMessage = _extractToastMessage(message);
+    
+    if (toastMessage.isEmpty) {
+      debugPrint('❌ Empty toast message');
+      return;
+    }
+
+    // Show toast/snackbar
+    ScaffoldMessenger.of(_currentContext!).showSnackBar(
+      SnackBar(
+        content: Text(toastMessage),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.green, // You can make this configurable
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {
+            ScaffoldMessenger.of(_currentContext!).hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
+
+    debugPrint('✅ Toast shown: $toastMessage');
+  } catch (e) {
+    debugPrint('❌ Error handling toast request: $e');
+  }
+}
+
+String _extractToastMessage(String url) {
+  try {
+    // Remove protocol
+    String cleanUrl = url.replaceAll('toast://', '');
+    
+    // URL decode
+    return Uri.decodeComponent(cleanUrl);
+  } catch (e) {
+    debugPrint('❌ Error extracting toast message: $e');
+    return '';
+  }
+}
 Future<void> _loadUrlWithAppData(WebViewController controller, String originalUrl, [BuildContext? context]) async {
   try {
     debugPrint('📊 Collecting enhanced app data with language and theme...');
@@ -292,6 +354,10 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildCont
     _handleLoginConfigRequest(request.url);
     return NavigationDecision.prevent;
   }
+  if (request.url.startsWith('toast://')) {
+  _handleToastRequest(request.url);
+  return NavigationDecision.prevent;
+}
   // Handle theme requests
   if (request.url.startsWith('dark-mode://')) {
     _handleThemeChange('dark');
@@ -1547,11 +1613,10 @@ void _performLogout() async {
       );
     }
   }
+void _injectJavaScript(WebViewController controller) {
+  debugPrint('💉 Injecting JavaScript...');
 
-  void _injectJavaScript(WebViewController controller) {
-    debugPrint('💉 Injecting JavaScript...');
-
-    controller.runJavaScript('''
+  controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading...");
     
     // Enhanced click handler with full protocol support
@@ -1564,7 +1629,7 @@ void _performLogout() async {
         
         // Handle all URL protocols
         if (href) {
-          // Alert requests - NEW
+          // Alert requests
           if (href.startsWith('alert://')) {
             e.preventDefault();
             if (window.AlertManager) {
@@ -1574,7 +1639,9 @@ void _performLogout() async {
               console.error("❌ AlertManager not available");
             }
             return false;
-          } else if (href.startsWith('confirm://')) {
+          } 
+          // Confirm requests
+          else if (href.startsWith('confirm://')) {
             e.preventDefault();
             if (window.AlertManager) {
               window.AlertManager.postMessage(href);
@@ -1583,13 +1650,26 @@ void _performLogout() async {
               console.error("❌ AlertManager not available");
             }
             return false;
-          } else if (href.startsWith('prompt://')) {
+          } 
+          // Prompt requests
+          else if (href.startsWith('prompt://')) {
             e.preventDefault();
             if (window.AlertManager) {
               window.AlertManager.postMessage(href);
               console.log("✏️ Prompt triggered via URL:", href);
             } else {
               console.error("❌ AlertManager not available");
+            }
+            return false;
+          }
+          // Toast requests
+          else if (href.startsWith('toast://')) {
+            e.preventDefault();
+            if (window.ToastManager) {
+              window.ToastManager.postMessage(href);
+              console.log("🍞 Toast triggered via URL:", href);
+            } else {
+              console.error("❌ ToastManager not available");
             }
             return false;
           }
@@ -1652,9 +1732,8 @@ void _performLogout() async {
         
         // Text-based detection (enhanced with alerts)
         
-        // Alert detection - NEW
+        // Alert detection
         if (textContent.includes('show alert') || textContent.includes('alert message') || textContent.includes('display alert')) {
-          // Look for data attributes containing alert message
           let alertMsg = element.getAttribute('data-alert') || 
                         element.getAttribute('data-message') ||
                         element.closest('[data-alert]')?.getAttribute('data-alert') ||
@@ -1670,7 +1749,7 @@ void _performLogout() async {
           }
         }
         
-        // Confirm detection - NEW
+        // Confirm detection
         if (textContent.includes('confirm') || textContent.includes('are you sure') || textContent.includes('delete')) {
           let confirmMsg = element.getAttribute('data-confirm') || 
                           element.getAttribute('data-message') ||
@@ -1686,7 +1765,7 @@ void _performLogout() async {
           }
         }
         
-        // Prompt detection - NEW
+        // Prompt detection
         if (textContent.includes('input') || textContent.includes('enter') || textContent.includes('prompt')) {
           let promptMsg = element.getAttribute('data-prompt') || 
                          element.getAttribute('data-message') ||
@@ -1703,6 +1782,22 @@ void _performLogout() async {
               }
               window.AlertManager.postMessage(promptUrl);
               console.log("✏️ Prompt triggered via text for:", promptMsg);
+            }
+            return false;
+          }
+        }
+        
+        // Toast detection
+        if (textContent.includes('toast') || textContent.includes('notification') || textContent.includes('message')) {
+          let toastMsg = element.getAttribute('data-toast') || 
+                        element.getAttribute('data-message') ||
+                        element.closest('[data-toast]')?.getAttribute('data-toast');
+          
+          if (toastMsg) {
+            e.preventDefault();
+            if (window.ToastManager) {
+              window.ToastManager.postMessage('toast://' + encodeURIComponent(toastMsg));
+              console.log("🍞 Toast triggered via text for:", toastMsg);
             }
             return false;
           }
@@ -1760,7 +1855,6 @@ void _performLogout() async {
         
         // Image save detection by text
         if (textContent.includes('save image') || textContent.includes('download image') || textContent.includes('save photo')) {
-          // Try to find image URL in nearby elements
           let imgElement = element.querySelector('img') || element.closest('img') || element.previousElementSibling?.querySelector('img') || element.nextElementSibling?.querySelector('img');
           if (imgElement && imgElement.src) {
             e.preventDefault();
@@ -1774,7 +1868,6 @@ void _performLogout() async {
         
         // PDF save detection by text
         if (textContent.includes('save pdf') || textContent.includes('download pdf') || textContent.includes('save document') || textContent.includes('download document')) {
-          // Try to find PDF URL in nearby elements
           let linkElement = element.querySelector('a[href*=".pdf"]') || 
                            element.closest('a[href*=".pdf"]') || 
                            element.previousElementSibling?.querySelector('a[href*=".pdf"]') ||
@@ -1791,7 +1884,6 @@ void _performLogout() async {
             return false;
           }
           
-          // Also check for data attributes or custom PDF URLs
           let pdfUrl = element.getAttribute('data-pdf-url') || 
                       element.getAttribute('data-document-url') ||
                       element.closest('[data-pdf-url]')?.getAttribute('data-pdf-url');
@@ -1808,7 +1900,6 @@ void _performLogout() async {
         
         // Auto-detect PDF links on any click
         if (href && (href.toLowerCase().includes('.pdf') || href.toLowerCase().includes('pdf'))) {
-          // Check if this is meant to be a PDF save operation
           if (textContent.includes('save') || textContent.includes('download') || element.classList.contains('save-pdf') || element.classList.contains('download-pdf')) {
             e.preventDefault();
             if (window.PdfSaver) {
@@ -1825,7 +1916,7 @@ void _performLogout() async {
 
     // Enhanced utility object with complete feature set
     window.ERPForever = {
-      // Alert System - NEW
+      // Alert System
       showAlert: function(message) {
         console.log('🚨 Showing alert:', message);
         if (window.AlertManager) {
@@ -1869,6 +1960,20 @@ void _performLogout() async {
         }
       },
       
+      // Toast System
+      showToast: function(message) {
+        console.log('🍞 Showing toast:', message);
+        if (window.ToastManager) {
+          if (typeof message === 'string' && message.trim()) {
+            window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+          } else {
+            console.error('❌ Invalid toast message');
+          }
+        } else {
+          console.error('❌ ToastManager not available');
+        }
+      },
+      
       // Contact System
       getAllContacts: function() {
         console.log('📞 Getting all contacts...');
@@ -1893,7 +1998,6 @@ void _performLogout() async {
       saveImage: function(imageUrl) {
         console.log('🖼️ Saving image:', imageUrl);
         if (window.ImageSaver) {
-          // Add protocol if not present
           if (!imageUrl.startsWith('save-image://')) {
             imageUrl = 'save-image://' + imageUrl;
           }
@@ -1907,13 +2011,11 @@ void _performLogout() async {
       savePdf: function(pdfUrl) {
         console.log('📄 Saving PDF:', pdfUrl);
         if (window.PdfSaver) {
-          // Validate URL
           if (!pdfUrl || typeof pdfUrl !== 'string') {
             console.error('❌ Invalid PDF URL provided');
             return false;
           }
           
-          // Add protocol if not present
           if (!pdfUrl.startsWith('save-pdf://')) {
             pdfUrl = 'save-pdf://' + pdfUrl;
           }
@@ -1980,8 +2082,6 @@ void _performLogout() async {
       },
       
       // Utility functions
-      
-      // Auto-save PDF from current page
       savePdfFromPage: function() {
         var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
         if (pdfLinks.length > 0) {
@@ -1993,7 +2093,6 @@ void _performLogout() async {
         }
       },
       
-      // Save multiple PDFs
       saveAllPdfs: function() {
         var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
         console.log('📄 Found', pdfLinks.length, 'PDF links');
@@ -2001,13 +2100,12 @@ void _performLogout() async {
         pdfLinks.forEach((link, index) => {
           setTimeout(() => {
             this.savePdf(link.href);
-          }, index * 1000); // 1 second delay between each save
+          }, index * 1000);
         });
         
         return pdfLinks.length;
       },
       
-      // Save all images on page
       saveAllImages: function() {
         var images = document.querySelectorAll('img[src]');
         console.log('🖼️ Found', images.length, 'images');
@@ -2015,13 +2113,12 @@ void _performLogout() async {
         images.forEach((img, index) => {
           setTimeout(() => {
             this.saveImage(img.src);
-          }, index * 500); // 0.5 second delay between each save
+          }, index * 500);
         });
         
         return images.length;
       },
       
-      // Mass alert function
       showMultipleAlerts: function(messages) {
         if (Array.isArray(messages)) {
           messages.forEach((msg, index) => {
@@ -2037,6 +2134,10 @@ void _performLogout() async {
       // Check availability functions
       isAlertAvailable: function() {
         return !!window.AlertManager;
+      },
+      
+      isToastAvailable: function() {
+        return !!window.ToastManager;
       },
       
       isContactsAvailable: function() {
@@ -2075,6 +2176,7 @@ void _performLogout() async {
       getAvailableFeatures: function() {
         return {
           alerts: this.isAlertAvailable(),
+          toasts: this.isToastAvailable(),
           contacts: this.isContactsAvailable(),
           location: this.isLocationAvailable(),
           barcode: this.isBarcodeAvailable(),
@@ -2097,17 +2199,18 @@ void _performLogout() async {
         };
       },
       
-      version: '1.1.0'
+      version: '1.2.0'
     };
 
-    // Enhanced logging with complete feature set
     console.log("✅ ERPForever WebView JavaScript ready!");
     console.log("📚 Usage examples:");
     console.log("  🚨 Alerts:");
     console.log("    - window.ERPForever.showAlert('Hello World!')");
     console.log("    - window.ERPForever.showConfirm('Are you sure?')");
     console.log("    - window.ERPForever.showPrompt('Enter name:', 'Default')");
-    console.log("    - <a href='alert://Hello%20World!'>Show Alert</a>");
+    console.log("  🍞 Toast:");
+    console.log("    - window.ERPForever.showToast('Message sent!')");
+    console.log("    - <a href='toast://Hello%20World!'>Show Toast</a>");
     console.log("  📞 Contacts:");
     console.log("    - window.ERPForever.getAllContacts()");
     console.log("  🌍 Location:");
@@ -2123,12 +2226,10 @@ void _performLogout() async {
     console.log("  🚪 Auth:");
     console.log("    - window.ERPForever.logout()");
     
-    // Global error handler for better debugging
     window.addEventListener('error', function(e) {
       console.error('JavaScript error:', e.error);
     });
     
-    // Ready event for external scripts
     var readyEvent = new CustomEvent('ERPForeverReady', { 
       detail: { 
         version: window.ERPForever.version,
@@ -2137,9 +2238,7 @@ void _performLogout() async {
     });
     document.dispatchEvent(readyEvent);
     
-    // Auto-detect and highlight interactive elements
     setTimeout(function() {
-      // Highlight PDF links
       var pdfLinks = document.querySelectorAll('a[href*=".pdf"], a[href*="pdf"]');
       console.log('📄 Found', pdfLinks.length, 'PDF links on page');
       
@@ -2148,7 +2247,6 @@ void _performLogout() async {
           link.classList.add('pdf-detected');
           link.title = (link.title || '') + ' (Click to save PDF)';
           
-          // Add PDF icon if not already present
           if (!link.querySelector('.pdf-icon')) {
             var icon = document.createElement('span');
             icon.className = 'pdf-icon';
@@ -2159,28 +2257,25 @@ void _performLogout() async {
         }
       });
       
-      // Highlight images that can be saved
       var images = document.querySelectorAll('img[src]');
       console.log('🖼️ Found', images.length, 'images on page');
       
-      // Highlight elements with alert data attributes
-      var alertElements = document.querySelectorAll('[data-alert], [data-confirm], [data-prompt]');
-      console.log('🚨 Found', alertElements.length, 'elements with alert attributes');
+      var alertElements = document.querySelectorAll('[data-alert], [data-confirm], [data-prompt], [data-toast]');
+      console.log('🚨 Found', alertElements.length, 'elements with alert/toast attributes');
       
       alertElements.forEach(function(element) {
         if (!element.classList.contains('alert-detected')) {
           element.classList.add('alert-detected');
           element.style.cursor = 'pointer';
-          element.title = element.title || 'Click to show alert';
+          element.title = element.title || 'Click to show message';
         }
       });
-      
     }, 1000);
     
     console.log("🎉 ERPForever WebView fully initialized with complete feature set!");
     console.log("🔧 Debug info:", window.ERPForever.getDebugInfo());
   ''');
-  }
+}
 
   // Update context
 void updateContext(BuildContext context) {

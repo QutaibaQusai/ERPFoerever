@@ -568,64 +568,42 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
   ''');
 }
 
-  void _handlePdfSaveRequest(String message) async {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for PDF save request');
-      return;
-    }
-
-    debugPrint('📄 Processing PDF save request: $message');
-
-    // Extract PDF URL from the message
-    String pdfUrl = PdfSaverService().extractPdfUrl(message);
-
-    if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
-      _sendPdfSaveToWebView({
-        'success': false,
-        'error': 'Invalid PDF URL',
-        'errorCode': 'INVALID_URL',
-        'url': pdfUrl,
-      });
-      return;
-    }
-
-    // Show loading dialog
-    _showPdfSaveLoadingDialog(pdfUrl);
-
-    try {
-      // Save PDF to device
-      Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(
-        message,
-      );
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      // Send result to WebView
-      _sendPdfSaveToWebView(result);
-
-      // Show option to open PDF if successful
-      if (result['success'] && result['filePath'] != null) {
-        _showPdfSavedDialog(result['filePath'], result['fileName']);
-      }
-    } catch (e) {
-      debugPrint('❌ Error handling PDF save request: $e');
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      _sendPdfSaveToWebView({
-        'success': false,
-        'error': 'Failed to save PDF: ${e.toString()}',
-        'errorCode': 'UNKNOWN_ERROR',
-        'url': pdfUrl,
-      });
-    }
+ void _handlePdfSaveRequest(String message) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for PDF save request');
+    return;
   }
+
+  debugPrint('📄 Processing PDF save request: $message');
+
+  String pdfUrl = PdfSaverService().extractPdfUrl(message);
+
+  if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
+    _sendPdfSaveToWebView({
+      'success': false,
+      'error': 'Invalid PDF URL',
+      'errorCode': 'INVALID_URL',
+      'url': pdfUrl,
+    });
+    return;
+  }
+
+  // No loading dialog - just process
+  debugPrint('⬇️ Starting PDF download...');
+
+  try {
+    Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(message);
+    _sendPdfSaveToWebView(result);
+  } catch (e) {
+    debugPrint('❌ Error handling PDF save request: $e');
+    _sendPdfSaveToWebView({
+      'success': false,
+      'error': 'Failed to save PDF: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+      'url': pdfUrl,
+    });
+  }
+}
 
   void _showPdfSaveLoadingDialog(String pdfUrl) {
     if (_currentContext == null) return;
@@ -782,59 +760,43 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
 
     // REMOVED: All SnackBar code - now using protocols instead
   } /// Handle image save requests
-  void _handleImageSaveRequest(String message) async {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for image save request');
-      return;
-    }
-
-    debugPrint('🖼️ Processing image save request: $message');
-
-    // Extract image URL from the message
-    String imageUrl = ImageSaverService().extractImageUrl(message);
-
-    if (!ImageSaverService().isValidImageUrl(imageUrl)) {
-      _sendImageSaveToWebView({
-        'success': false,
-        'error': 'Invalid image URL',
-        'errorCode': 'INVALID_URL',
-        'url': imageUrl,
-      });
-      return;
-    }
-
-    // Show loading dialog
-    _showImageSaveLoadingDialog(imageUrl);
-
-    try {
-      // Save image to gallery
-      Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(
-        message,
-      );
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      // Send result to WebView
-      _sendImageSaveToWebView(result);
-    } catch (e) {
-      debugPrint('❌ Error handling image save request: $e');
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      _sendImageSaveToWebView({
-        'success': false,
-        'error': 'Failed to save image: ${e.toString()}',
-        'errorCode': 'UNKNOWN_ERROR',
-        'url': imageUrl,
-      });
-    }
+ void _handleImageSaveRequest(String message) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for image save request');
+    return;
   }
+
+  debugPrint('🖼️ Processing image save request: $message');
+
+  String imageUrl = ImageSaverService().extractImageUrl(message);
+
+  if (!ImageSaverService().isValidImageUrl(imageUrl)) {
+    _sendImageSaveToWebView({
+      'success': false,
+      'error': 'Invalid image URL',
+      'errorCode': 'INVALID_URL',
+      'url': imageUrl,
+    });
+    return;
+  }
+
+  // No loading dialog - just process
+  debugPrint('⬇️ Starting image download...');
+
+  try {
+    Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(message);
+    _sendImageSaveToWebView(result);
+  } catch (e) {
+    debugPrint('❌ Error handling image save request: $e');
+    _sendImageSaveToWebView({
+      'success': false,
+      'error': 'Failed to save image: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+      'url': imageUrl,
+    });
+  }
+}
+
 
   void _showImageSaveLoadingDialog(String imageUrl) {
     if (_currentContext == null) return;
@@ -940,52 +902,34 @@ void _sendImageSaveToWebView(Map<String, dynamic> result) {
 
     // REMOVED: All SnackBar code - now using protocols instead
   }
-  /// Handle screenshot requests - SIMPLIFIED VERSION
-  void _handleScreenshotRequest(String message) async {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for screenshot request');
-      return;
-    }
-
-    debugPrint('📸 Processing screenshot request...');
-
-    // Show loading dialog
-    _showScreenshotLoadingDialog();
-
-    // Add a small delay to ensure WebView is fully rendered
-    await Future.delayed(Duration(milliseconds: 800));
-
-    try {
-      // Use the existing ScreenshotService which should now capture WebView
-      Map<String, dynamic> screenshotResult = await ScreenshotService()
-          .takeScreenshotWithOptions(
-            saveToGallery: true,
-            delay: Duration(milliseconds: 200),
-          );
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      // Send result to WebView
-      _sendScreenshotToWebView(screenshotResult);
-    } catch (e) {
-      debugPrint('❌ Error taking screenshot: $e');
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      _sendScreenshotToWebView({
-        'success': false,
-        'error': 'Failed to take screenshot: ${e.toString()}',
-        'errorCode': 'CAPTURE_FAILED',
-      });
-    }
+void _handleScreenshotRequest(String message) async {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for screenshot request');
+    return;
   }
 
+  debugPrint('📸 Processing screenshot request...');
+
+  // No loading dialog - just process
+  await Future.delayed(Duration(milliseconds: 800));
+
+  try {
+    Map<String, dynamic> screenshotResult = await ScreenshotService()
+        .takeScreenshotWithOptions(
+          saveToGallery: true,
+          delay: Duration(milliseconds: 200),
+        );
+
+    _sendScreenshotToWebView(screenshotResult);
+  } catch (e) {
+    debugPrint('❌ Error taking screenshot: $e');
+    _sendScreenshotToWebView({
+      'success': false,
+      'error': 'Failed to take screenshot: ${e.toString()}',
+      'errorCode': 'CAPTURE_FAILED',
+    });
+  }
+}
   void _showScreenshotLoadingDialog() {
     if (_currentContext == null) return;
 
@@ -1086,47 +1030,28 @@ void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
 
     // REMOVED: All SnackBar code - now using protocols instead
   }
-  /// Handle contacts requests
-  void _handleContactsRequest(String message) async {
-    if (_currentContext == null || _currentController == null) {
-      debugPrint('❌ No context or controller available for contacts request');
-      return;
-    }
-
-    debugPrint('📞 Processing contacts request...');
-
-    try {
-      // Show loading dialog
-      _showContactsLoadingDialog();
-
-      // Get all contacts
-      Map<String, dynamic> contactsResult =
-          await AppContactsService().getAllContacts();
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      // Send result to WebView
-      _sendContactsToWebView(contactsResult);
-    } catch (e) {
-      debugPrint('❌ Error handling contacts request: $e');
-
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-
-      // Send error to WebView
-      _sendContactsToWebView({
-        'success': false,
-        'error': 'Failed to get contacts: ${e.toString()}',
-        'errorCode': 'UNKNOWN_ERROR',
-        'contacts': [],
-      });
-    }
+ void _handleContactsRequest(String message) async {
+  if (_currentContext == null || _currentController == null) {
+    debugPrint('❌ No context or controller available for contacts request');
+    return;
   }
+
+  debugPrint('📞 Processing contacts request...');
+
+  try {
+    // No loading dialog - just process
+    Map<String, dynamic> contactsResult = await AppContactsService().getAllContacts();
+    _sendContactsToWebView(contactsResult);
+  } catch (e) {
+    debugPrint('❌ Error handling contacts request: $e');
+    _sendContactsToWebView({
+      'success': false,
+      'error': 'Failed to get contacts: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+      'contacts': [],
+    });
+  }
+}
 
   void _showContactsLoadingDialog() {
     if (_currentContext == null) return;
@@ -1265,7 +1190,6 @@ void _handleLocationRequest(String message) async {
     return;
   }
 
-  // ADD THIS CONTEXT VALIDATION
   if (!_currentContext!.mounted) {
     debugPrint('❌ Context is no longer mounted for location request');
     return;
@@ -1274,27 +1198,11 @@ void _handleLocationRequest(String message) async {
   debugPrint('🌍 Processing location request...');
 
   try {
-    // Show loading dialog
-    _showLocationLoadingDialog();
-
-    Map<String, dynamic> locationResult =
-        await LocationService().getCurrentLocation();
-
-    // VALIDATE CONTEXT AGAIN before hiding dialog
-    if (_currentContext != null && _currentContext!.mounted && Navigator.canPop(_currentContext!)) {
-      Navigator.of(_currentContext!).pop();
-    }
-
-    // Send result to WebView
+    // No loading dialog - just process
+    Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
     _sendLocationToWebView(locationResult);
   } catch (e) {
     debugPrint('❌ Error handling location request: $e');
-
-    // VALIDATE CONTEXT before hiding dialog
-    if (_currentContext != null && _currentContext!.mounted && Navigator.canPop(_currentContext!)) {
-      Navigator.of(_currentContext!).pop();
-    }
-
     _sendLocationToWebView({
       'success': false,
       'error': 'Failed to get location: ${e.toString()}',
@@ -1302,6 +1210,7 @@ void _handleLocationRequest(String message) async {
     });
   }
 }
+
 
   void _showLocationLoadingDialog() {
     if (_currentContext == null) return;
@@ -1328,79 +1237,76 @@ void _handleLocationRequest(String message) async {
     );
   }
 
-  void _sendLocationToWebView(Map<String, dynamic> locationData) {
-    if (_currentController == null) {
-      debugPrint('❌ No WebView controller available for location result');
-      return;
-    }
-
-    debugPrint('📱 Sending location data to WebView');
-
-    final success = locationData['success'] ?? false;
-    final latitude = locationData['latitude'];
-    final longitude = locationData['longitude'];
-    final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
-    final errorCode = locationData['errorCode'] ?? '';
-
-    _currentController!.runJavaScript('''
-      try {
-        console.log("📍 Location received: Success=$success");
-        
-        var locationResult = {
-          success: $success,
-          latitude: ${latitude ?? 'null'},
-          longitude: ${longitude ?? 'null'},
-          error: "$error",
-          errorCode: "$errorCode"
-        };
-        
-        // Try callback functions
-        if (typeof getLocationCallback === 'function') {
-          console.log("✅ Calling getLocationCallback()");
-          getLocationCallback($success, ${latitude ?? 'null'}, ${longitude ?? 'null'}, "$error", "$errorCode");
-        } else if (typeof window.handleLocationResult === 'function') {
-          console.log("✅ Calling window.handleLocationResult()");
-          window.handleLocationResult(locationResult);
-        } else if (typeof handleLocationResult === 'function') {
-          console.log("✅ Calling handleLocationResult()");
-          handleLocationResult(locationResult);
-        } else {
-          console.log("✅ Using fallback - triggering event");
-          
-          var event = new CustomEvent('locationReceived', { detail: locationResult });
-          document.dispatchEvent(event);
-        }
-        
-      } catch (error) {
-        console.error("❌ Error handling location result:", error);
-      }
-    ''');
-
-    // Show feedback
-    if (_currentContext != null) {
-      String message;
-      Color backgroundColor;
-
-      if (locationData['success']) {
-        final lat = locationData['latitude']?.toStringAsFixed(6) ?? 'Unknown';
-        final lng = locationData['longitude']?.toStringAsFixed(6) ?? 'Unknown';
-        message = 'Location: $lat, $lng';
-        backgroundColor = Colors.green;
-      } else {
-        message = locationData['error'] ?? 'Failed to get location';
-        backgroundColor = Colors.red;
-      }
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: Duration(seconds: 3),
-          backgroundColor: backgroundColor,
-        ),
-      );
-    }
+void _sendLocationToWebView(Map<String, dynamic> locationData) {
+  if (_currentController == null) {
+    debugPrint('❌ No WebView controller available for location result');
+    return;
   }
 
+  debugPrint('📱 Sending location data to WebView');
+
+  final success = locationData['success'] ?? false;
+  final latitude = locationData['latitude'];
+  final longitude = locationData['longitude'];
+  final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
+  final errorCode = locationData['errorCode'] ?? '';
+
+  _currentController!.runJavaScript('''
+    try {
+      console.log("📍 Location received: Success=$success");
+      
+      var locationResult = {
+        success: $success,
+        latitude: ${latitude ?? 'null'},
+        longitude: ${longitude ?? 'null'},
+        error: "$error",
+        errorCode: "$errorCode"
+      };
+      
+      // Try callback functions
+      if (typeof getLocationCallback === 'function') {
+        console.log("✅ Calling getLocationCallback()");
+        getLocationCallback($success, ${latitude ?? 'null'}, ${longitude ?? 'null'}, "$error", "$errorCode");
+      } else if (typeof window.handleLocationResult === 'function') {
+        console.log("✅ Calling window.handleLocationResult()");
+        window.handleLocationResult(locationResult);
+      } else if (typeof handleLocationResult === 'function') {
+        console.log("✅ Calling handleLocationResult()");
+        handleLocationResult(locationResult);
+      } else {
+        console.log("✅ Using fallback - triggering event");
+        
+        var event = new CustomEvent('locationReceived', { detail: locationResult });
+        document.dispatchEvent(event);
+      }
+      
+      // Use web scripts instead of native alerts
+      if ($success) {
+        const lat = ${latitude ?? 'null'};
+        const lng = ${longitude ?? 'null'};
+        const message = 'Location: ' + lat + ', ' + lng;
+        
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent(message);
+        }
+      } else {
+        const errorMessage = 'Location Error: $error';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+        }
+      }
+      
+    } catch (error) {
+      console.error("❌ Error handling location result:", error);
+    }
+  ''');
+
+  // REMOVED: All native SnackBar code
+}
 void _handleAuthRequest(String message) {
   debugPrint('🚪 Auth request received: $message');
   
@@ -1435,14 +1341,18 @@ void _performLogout() async {
     debugPrint('🔄 Calling authService.logout()...');
     await authService.logout();
 
-    debugPrint('✅ Logout successful, showing feedback...');
+    debugPrint('✅ Logout successful, using web scripts for feedback...');
     
-    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-      const SnackBar(
-        content: Text('Logged out successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
+    // Use web scripts instead of native SnackBar
+    if (_currentController != null) {
+      _currentController!.runJavaScript('''
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent('Logged out successfully');
+        }
+      ''');
+    }
 
     debugPrint('🔄 Navigating to login page...');
     
@@ -1456,12 +1366,17 @@ void _performLogout() async {
   } catch (e) {
     debugPrint('❌ Error during logout: $e');
 
-    ScaffoldMessenger.of(_currentContext!).showSnackBar(
-      const SnackBar(
-        content: Text('Error during logout'),
-        backgroundColor: Colors.red,
-      ),
-    );
+    // Use web scripts instead of native SnackBar
+    if (_currentController != null) {
+      _currentController!.runJavaScript('''
+        const errorMessage = 'Error during logout';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+        }
+      ''');
+    }
   }
 }
 
@@ -1484,61 +1399,66 @@ void _performLogout() async {
       ),
     );
   }
+void _sendBarcodeToWebView(String barcode, bool isContinuous) {
+  if (_currentController == null) return;
 
-  void _sendBarcodeToWebView(String barcode, bool isContinuous) {
-    if (_currentController == null) return;
+  final escapedBarcode = barcode.replaceAll('"', '\\"');
 
-    final escapedBarcode = barcode.replaceAll('"', '\\"');
-
-    _currentController!.runJavaScript('''
-      try {
-        console.log("📸 Barcode received: $escapedBarcode");
-        
-        if (typeof getBarcode === 'function') {
-          getBarcode("$escapedBarcode");
-        } else {
-          var inputs = document.querySelectorAll('input[type="text"]');
-          if(inputs.length > 0) {
-            inputs[0].value = "$escapedBarcode";
-            inputs[0].dispatchEvent(new Event('input'));
-          }
-          
-          var event = new CustomEvent('barcodeScanned', { 
-            detail: { result: "$escapedBarcode", continuous: $isContinuous } 
-          });
-          document.dispatchEvent(event);
+  _currentController!.runJavaScript('''
+    try {
+      console.log("📸 Barcode received: $escapedBarcode");
+      
+      if (typeof getBarcode === 'function') {
+        getBarcode("$escapedBarcode");
+      } else {
+        var inputs = document.querySelectorAll('input[type="text"]');
+        if(inputs.length > 0) {
+          inputs[0].value = "$escapedBarcode";
+          inputs[0].dispatchEvent(new Event('input'));
         }
         
-      } catch (error) {
-        console.error("❌ Error handling barcode:", error);
+        var event = new CustomEvent('barcodeScanned', { 
+          detail: { result: "$escapedBarcode", continuous: $isContinuous } 
+        });
+        document.dispatchEvent(event);
       }
-    ''');
+      
+      // Use web scripts instead of native SnackBar
+      const message = 'Barcode scanned: $escapedBarcode';
+      if (window.ToastManager) {
+        window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+      } else {
+        window.location.href = 'toast://' + encodeURIComponent(message);
+      }
+      
+    } catch (error) {
+      console.error("❌ Error handling barcode:", error);
+    }
+  ''');
 
-    if (_currentContext != null) {
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text('Barcode scanned: $barcode'),
-          backgroundColor: Colors.green,
-        ),
-      );
+  // REMOVED: Native SnackBar code
+}
+void _handleThemeChange(String themeMode) {
+  if (_currentContext != null) {
+    final themeService = Provider.of<ThemeService>(
+      _currentContext!,
+      listen: false,
+    );
+    themeService.updateThemeMode(themeMode);
+
+    // Use web scripts instead of native SnackBar
+    final message = 'Theme changed to ${themeMode.toUpperCase()} mode';
+    if (_currentController != null) {
+      _currentController!.runJavaScript('''
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent('$message'));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent('$message');
+        }
+      ''');
     }
   }
-
-  void _handleThemeChange(String themeMode) {
-    if (_currentContext != null) {
-      final themeService = Provider.of<ThemeService>(
-        _currentContext!,
-        listen: false,
-      );
-      themeService.updateThemeMode(themeMode);
-
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text('Theme changed to ${themeMode.toUpperCase()} mode'),
-        ),
-      );
-    }
-  }
+}
 void _injectJavaScript(WebViewController controller) {
   debugPrint('💉 Injecting JavaScript...');
 
@@ -1613,6 +1533,16 @@ void _injectJavaScript(WebViewController controller) {
             }
             return false;
           }
+          else if (href.startsWith('toast://')) {
+  e.preventDefault();
+  if (window.ToastManager) {
+    window.ToastManager.postMessage(href);
+    console.log("🍞 Toast triggered via URL:", href);
+  } else {
+    console.error("❌ ToastManager not available");
+  }
+  return false;
+}
           // Theme requests
           else if (href.startsWith('dark-mode://')) {
             e.preventDefault();
@@ -1792,14 +1722,15 @@ void _injectJavaScript(WebViewController controller) {
           }
         }
         
-        if (textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) {
-          e.preventDefault();
-          if (window.LocationManager) {
-            window.LocationManager.postMessage('getCurrentLocation');
-            console.log("🌍 Location request triggered via text");
-          }
-          return false;
-        }
+      if ((textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) && 
+    !textContent.includes('saved') && !textContent.includes('success') && !textContent.includes('screenshot')) {
+  e.preventDefault();
+  if (window.LocationManager) {
+    window.LocationManager.postMessage('getCurrentLocation');
+    console.log("🌍 Location request triggered via text");
+  }
+  return false;
+}
         
         if (textContent.includes('get contacts') || textContent.includes('load contacts') || textContent.includes('contact list')) {
           e.preventDefault();
@@ -2565,82 +2496,58 @@ void _handleLoginConfigRequest(String loginUrl) async {
   debugPrint('🔗 WebView login config request: $loginUrl');
   
   try {
-    // Parse the config URL
     final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
     
     if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
       final configUrl = parsedData['configUrl']!;
       final userRole = parsedData['role'];
       
-      // Show loading dialog
-      showDialog(
-        context: _currentContext!,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Updating configuration...'),
-                if (userRole != null) ...[
-                  SizedBox(height: 8),
-                  Text('Role: $userRole', style: TextStyle(fontSize: 12)),
-                ],
-              ],
-            ),
-          );
-        },
-      );
+      // No loading dialog - just process
+      debugPrint('🔄 Processing config URL: $configUrl');
       
-      // Set the dynamic config URL
       await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
       
-      // Hide loading dialog
-      if (_currentContext != null && Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-      
-      // Show success feedback
-      if (_currentContext != null) {
-        ScaffoldMessenger.of(_currentContext!).showSnackBar(
-          SnackBar(
-            content: Text('Configuration updated!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+      // Use web scripts for success feedback
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
+          const message = 'Configuration updated successfully!';
+          if (window.ToastManager) {
+            window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+          } else {
+            window.location.href = 'toast://' + encodeURIComponent(message);
+          }
+        ''');
       }
       
     } else {
-      if (_currentContext != null) {
-        ScaffoldMessenger.of(_currentContext!).showSnackBar(
-          SnackBar(
-            content: Text('Invalid configuration URL'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      // Use web scripts for error feedback
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
+          const errorMessage = 'Invalid configuration URL';
+          if (window.AlertManager) {
+            window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+          } else {
+            window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+          }
+        ''');
       }
     }
   } catch (e) {
     debugPrint('❌ Error in WebView config request: $e');
     
-    if (_currentContext != null) {
-      // Hide loading dialog if open
-      if (Navigator.canPop(_currentContext!)) {
-        Navigator.of(_currentContext!).pop();
-      }
-      
-      ScaffoldMessenger.of(_currentContext!).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    // Use web scripts for error feedback
+    if (_currentController != null) {
+      _currentController!.runJavaScript('''
+        const errorMessage = 'Error updating configuration: ${e.toString()}';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+        }
+      ''');
     }
   }
 }
-
 
 void clearCurrentController() {
   debugPrint('🧹 Clearing all controller references');

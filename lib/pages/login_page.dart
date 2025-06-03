@@ -96,123 +96,57 @@ void _initializeWebView() {
   }
   /// UPDATED: Handle login success with config URL support
   void _handleLoginSuccess(String loginUrl) async {
-    debugPrint('✅ User logged in successfully with URL: $loginUrl');
+  debugPrint('✅ User logged in successfully with URL: $loginUrl');
+  
+  try {
+    final authService = Provider.of<AuthService>(context, listen: false);
     
-    try {
-      final authService = Provider.of<AuthService>(context, listen: false);
+    String? configUrl;
+    
+    if (loginUrl.startsWith('loggedin://')) {
+      configUrl = loginUrl;
+      debugPrint('🔗 Config URL detected: $configUrl');
       
-      // Parse the login URL to extract config information
-      String? configUrl;
-      
-      if (loginUrl.startsWith('loggedin://')) {
-        // Extract everything after loggedin:// as the config URL
-        configUrl = loginUrl;
-        debugPrint('🔗 Config URL detected: $configUrl');
-        
-        // Show loading indicator for config processing
-        if (mounted) {
-          setState(() {
-            _isLoading = true;
-          });
+      // No loading dialog - just process
+      debugPrint('🔄 Processing configuration...');
+    }
+    
+    // Login with config URL
+    await authService.login(configUrl: configUrl);
+    
+    debugPrint('✅ Login successful - navigating to main screen');
+    
+    // Navigate to main screen immediately
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => const MainScreen(),
+        ),
+      );
+    }
+    
+  } catch (e) {
+    debugPrint('❌ Error during login process: $e');
+    
+    // Use web script for error notification
+    if (mounted) {
+      _controller.runJavaScript('''
+        const errorMessage = 'Login error: ${e.toString()}';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
-        
-        _showConfigProcessingDialog();
-      }
+      ''');
       
-      // Login with config URL
-      await authService.login(configUrl: configUrl);
-      
-      // Hide any loading dialogs
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-      }
-      
-      // Show success message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              configUrl != null 
-                ? 'Logged in successfully! Loading your configuration...'
-                : 'Logged in successfully!'
-            ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      
-      // Navigate to main screen
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const MainScreen(),
-          ),
-        );
-      }
-      
-    } catch (e) {
-      debugPrint('❌ Error during login process: $e');
-      
-      // Hide any loading dialogs
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-      }
-      
-      // Show error message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Login error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-        
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
+}
 
-  /// NEW: Show dialog while processing config URL
-  void _showConfigProcessingDialog() {
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text(
-                'Processing your configuration...',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Setting up your personalized experience',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  
 
   @override
   Widget build(BuildContext context) {

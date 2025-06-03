@@ -283,49 +283,44 @@ if (request.url.startsWith('toast://')) {
     }
   }
 
-  // Add this new method to WebViewSheet
   Future<void> _launchInDefaultBrowser(String url) async {
-    try {
-      debugPrint('🌐 Opening URL in default browser: $url');
+  try {
+    debugPrint('🌐 Opening URL in default browser: $url');
 
-      final Uri uri = Uri.parse(url);
+    final Uri uri = Uri.parse(url);
 
-      // Check if the URL can be launched
-      if (await canLaunchUrl(uri)) {
-        // Launch in external browser (not in-app)
-        final bool launched = await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication, // Force external browser
-        );
+    if (await canLaunchUrl(uri)) {
+      final bool launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
 
-        if (launched) {
-          debugPrint('✅ Successfully opened URL in default browser');
+      if (launched) {
+        debugPrint('✅ Successfully opened URL in default browser');
 
-          // Show success feedback
-          if (mounted) {
-            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Opening in browser...'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          }
-        } else {
-          debugPrint('❌ Failed to launch URL in browser');
-          _showUrlError('Could not open URL in browser');
+        // Use web scripts instead of native SnackBar
+        if (mounted) {
+          _controller.runJavaScript('''
+            if (window.ToastManager) {
+              window.ToastManager.postMessage('toast://' + encodeURIComponent('Opening in browser...'));
+            } else {
+              window.location.href = 'toast://' + encodeURIComponent('Opening in browser...');
+            }
+          ''');
         }
       } else {
-        debugPrint('❌ Cannot launch URL: $url');
-        _showUrlError('Cannot open this type of URL');
+        debugPrint('❌ Failed to launch URL in browser');
+        _showUrlError('Could not open URL in browser');
       }
-    } catch (e) {
-      debugPrint('❌ Error launching URL in browser: $e');
-      _showUrlError('Failed to open browser: ${e.toString()}');
+    } else {
+      debugPrint('❌ Cannot launch URL: $url');
+      _showUrlError('Cannot open this type of URL');
     }
+  } catch (e) {
+    debugPrint('❌ Error launching URL in browser: $e');
+    _showUrlError('Failed to open browser: ${e.toString()}');
   }
+}
 
   void _handleNewWebNavigation(String url) {
     debugPrint('🌐 Opening new WebView from sheet: $url');
@@ -384,19 +379,18 @@ if (request.url.startsWith('toast://')) {
     );
   }
 
-  void _showUrlError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+void _showUrlError(String message) {
+  if (mounted) {
+    _controller.runJavaScript('''
+      const errorMessage = '$message';
+      if (window.AlertManager) {
+        window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+      } else {
+        window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+      }
+    ''');
   }
+}
 
   Future<void> _handleJavaScriptRefresh() async {
     debugPrint('🔄 Processing sheet refresh request...');
@@ -696,14 +690,15 @@ if (request.url.startsWith('toast://')) {
           return false;
         }
         
-        if (textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) {
-          e.preventDefault();
-          if (window.LocationManager) {
-            window.LocationManager.postMessage('getCurrentLocation');
-            console.log("🌍 Location request triggered via text");
-          }
-          return false;
-        }
+        if ((textContent.includes('get location') || textContent.includes('current location') || textContent.includes('my location')) && 
+    !textContent.includes('saved') && !textContent.includes('success') && !textContent.includes('screenshot')) {
+  e.preventDefault();
+  if (window.LocationManager) {
+    window.LocationManager.postMessage('getCurrentLocation');
+    console.log("🌍 Location request triggered via text");
+  }
+  return false;
+}
         
         if (textContent.includes('get contacts') || textContent.includes('load contacts') || textContent.includes('contact list')) {
           e.preventDefault();

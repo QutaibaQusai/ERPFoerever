@@ -686,63 +686,62 @@ if (request.url.startsWith('toast://')) {
       }
     }
 
-    Future<void> _launchInDefaultBrowser(String url) async {
-      try {
-        debugPrint('🌐 Opening URL in default browser: $url');
+Future<void> _launchInDefaultBrowser(String url) async {
+  try {
+    debugPrint('🌐 Opening URL in default browser: $url');
 
-        final Uri uri = Uri.parse(url);
+    final Uri uri = Uri.parse(url);
 
-        // Check if the URL can be launched
-        if (await canLaunchUrl(uri)) {
-          // Launch in external browser (not in-app)
-          final bool launched = await launchUrl(
-            uri,
-            mode: LaunchMode.externalApplication, // Force external browser
-          );
+    if (await canLaunchUrl(uri)) {
+      final bool launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
 
-          if (launched) {
-            debugPrint('✅ Successfully opened URL in default browser');
+      if (launched) {
+        debugPrint('✅ Successfully opened URL in default browser');
 
-            // Show success feedback
-            if (mounted) {
-              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Opening in browser...'),
-                  backgroundColor: Colors.green,
-                  duration: Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+        // Use web scripts instead of native SnackBar
+        if (mounted) {
+          final controller = _controllerManager.getController(_selectedIndex, '', context);
+          controller.runJavaScript('''
+            if (window.ToastManager) {
+              window.ToastManager.postMessage('toast://' + encodeURIComponent('Opening in browser...'));
+            } else {
+              window.location.href = 'toast://' + encodeURIComponent('Opening in browser...');
             }
-          } else {
-            debugPrint('❌ Failed to launch URL in browser');
-            _showUrlError('Could not open URL in browser');
-          }
-        } else {
-          debugPrint('❌ Cannot launch URL: $url');
-          _showUrlError('Cannot open this type of URL');
+          ''');
         }
-      } catch (e) {
-        debugPrint('❌ Error launching URL in browser: $e');
-        _showUrlError('Failed to open browser: ${e.toString()}');
+      } else {
+        debugPrint('❌ Failed to launch URL in browser');
+        _showUrlError('Could not open URL in browser');
       }
+    } else {
+      debugPrint('❌ Cannot launch URL: $url');
+      _showUrlError('Cannot open this type of URL');
     }
+  } catch (e) {
+    debugPrint('❌ Error launching URL in browser: $e');
+    _showUrlError('Failed to open browser: ${e.toString()}');
+  }
+}
+
 
     // NEW: Add this helper method to show URL errors
-    void _showUrlError(String message) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+  void _showUrlError(String message) {
+  if (mounted) {
+    final controller = _controllerManager.getController(_selectedIndex, '', context);
+    controller.runJavaScript('''
+      const errorMessage = '$message';
+      if (window.AlertManager) {
+        window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+      } else {
+        window.location.href = 'alert://' + encodeURIComponent(errorMessage);
       }
-    }
+    ''');
+  }
+}
+
 
     void _handleAlertRequest(String url) async {
       debugPrint('🚨 Alert request received in main screen: $url');
@@ -1023,49 +1022,46 @@ if (request.url.startsWith('toast://')) {
       debugPrint('🚪 Logout requested from WebView');
       _performLogout();
     }
+void _performLogout() async {
+  try {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    await authService.logout();
 
-    void _performLogout() async {
-      try {
-        // Get the AuthService and logout
-        final authService = Provider.of<AuthService>(context, listen: false);
-        await authService.logout();
+    debugPrint('✅ User logged out successfully');
 
-        debugPrint('✅ User logged out successfully');
-
-        // Show feedback
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Logged out successfully'),
-              duration: Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const LoginPage()),
-            (route) => false,
-          );
-        }
-      } catch (e) {
-        debugPrint('❌ Error during logout: $e');
-
-        // Show error message
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Error during logout'),
-              duration: Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+    // Use web scripts instead of native SnackBar
+    final controller = _controllerManager.getController(_selectedIndex, '', context);
+    controller.runJavaScript('''
+      if (window.ToastManager) {
+        window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
+      } else {
+        window.location.href = 'toast://' + encodeURIComponent('Logged out successfully');
       }
-    }
+    ''');
 
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (route) => false,
+      );
+    }
+  } catch (e) {
+    debugPrint('❌ Error during logout: $e');
+
+    // Use web scripts instead of native SnackBar
+    if (mounted) {
+      final controller = _controllerManager.getController(_selectedIndex, '', context);
+      controller.runJavaScript('''
+        const errorMessage = 'Error during logout';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+        }
+      ''');
+    }
+  }
+}
   void _handleThemeChangeRequest(String url) {
     String themeMode = 'system';
 
@@ -1284,94 +1280,60 @@ void _ensureTabInitialized(int index) {
 }
 
 
-
-    void _handleLoginConfigRequest(String loginUrl) async {
-    debugPrint('🔗 Login config request received: $loginUrl');
+void _handleLoginConfigRequest(String loginUrl) async {
+  debugPrint('🔗 Login config request received: $loginUrl');
+  
+  try {
+    final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
     
-    try {
-      // Parse the config URL
-      final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
+    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+      final configUrl = parsedData['configUrl']!;
+      final userRole = parsedData['role'];
       
-      if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
-        final configUrl = parsedData['configUrl']!;
-        final userRole = parsedData['role'];
-        
-        debugPrint('✅ Processing config URL: $configUrl');
-        debugPrint('👤 User role: ${userRole ?? 'not specified'}');
-        
-        // Show loading dialog
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text(
-                    'Updating configuration...',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                  ),
-                  if (userRole != null) ...[
-                    SizedBox(height: 8),
-                    Text(
-                      'Role: $userRole',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                  ],
-                ],
-              ),
-            );
-          },
-        );
-        
-        // Set the dynamic config URL
-        await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
-        
-        // Hide loading dialog
-        if (mounted && Navigator.canPop(context)) {
-          Navigator.of(context).pop();
+      debugPrint('✅ Processing config URL: $configUrl');
+      debugPrint('👤 User role: ${userRole ?? 'not specified'}');
+      
+      // No loading dialog - just process
+      await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
+      
+      // Use web scripts instead of native SnackBar
+      final controller = _controllerManager.getController(_selectedIndex, '', context);
+      controller.runJavaScript('''
+        const message = 'Configuration updated successfully!';
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent(message);
         }
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Configuration updated successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        
-      } else {
-        debugPrint('❌ Failed to parse config URL');
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invalid configuration URL'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Error handling login config request: $e');
+      ''');
       
-      // Hide loading dialog if open
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.of(context).pop();
-      }
+    } else {
+      debugPrint('❌ Failed to parse config URL');
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error updating configuration: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      final controller = _controllerManager.getController(_selectedIndex, '', context);
+      controller.runJavaScript('''
+        const errorMessage = 'Invalid configuration URL';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+        }
+      ''');
     }
+  } catch (e) {
+    debugPrint('❌ Error handling login config request: $e');
+    
+    final controller = _controllerManager.getController(_selectedIndex, '', context);
+    controller.runJavaScript('''
+      const errorMessage = 'Error updating configuration: ${e.toString()}';
+      if (window.AlertManager) {
+        window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+      } else {
+        window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+      }
+    ''');
   }
+}
 
     @override
     void dispose() {

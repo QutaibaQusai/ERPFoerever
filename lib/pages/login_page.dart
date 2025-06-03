@@ -1,11 +1,11 @@
 // lib/pages/login_page.dart - Updated with config URL support
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:ERPForever/widgets/loading_widget.dart';
 import 'package:ERPForever/pages/main_screen.dart';
 import 'package:ERPForever/services/auth_service.dart';
-import 'package:ERPForever/services/config_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -17,6 +17,8 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   late WebViewController _controller;
   bool _isLoading = true;
+    bool _splashRemoved = false; // NEW: Track splash removal
+
 
   @override
   void initState() {
@@ -24,12 +26,13 @@ class _LoginPageState extends State<LoginPage> {
     _initializeWebView();
   }
 
-  void _initializeWebView() {
+void _initializeWebView() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
+            debugPrint('🔄 Login page started loading: $url');
             if (mounted) {
               setState(() {
                 _isLoading = true;
@@ -37,11 +40,15 @@ class _LoginPageState extends State<LoginPage> {
             }
           },
           onPageFinished: (String url) {
+            debugPrint('✅ Login page finished loading: $url');
             if (mounted) {
               setState(() {
                 _isLoading = false;
               });
             }
+            
+            // NEW: Remove splash when login page is fully loaded
+            _tryRemoveSplash();
           },
           onNavigationRequest: (NavigationRequest request) {
             debugPrint('Login Navigation request: ${request.url}');
@@ -61,12 +68,32 @@ class _LoginPageState extends State<LoginPage> {
                 _isLoading = false;
               });
             }
+            
+            // NEW: Even on error, remove splash after minimum time
+            _tryRemoveSplash();
           },
         ),
       )
       ..loadRequest(Uri.parse('https://mobile.erpforever.com/login'));
   }
-
+   void _tryRemoveSplash() {
+    if (_splashRemoved) return;
+    
+    debugPrint('🎬 LoginPage: Attempting to remove splash screen...');
+    
+    // Add a small delay to ensure WebView is fully rendered
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted && !_splashRemoved) {
+        try {
+          FlutterNativeSplash.remove();
+          _splashRemoved = true;
+          debugPrint('✅ LoginPage: Splash screen removed - login page is ready!');
+        } catch (e) {
+          debugPrint('❌ LoginPage: Error removing splash screen: $e');
+        }
+      }
+    });
+  }
   /// UPDATED: Handle login success with config URL support
   void _handleLoginSuccess(String loginUrl) async {
     debugPrint('✅ User logged in successfully with URL: $loginUrl');

@@ -703,8 +703,7 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       },
     );
   }
-
- void _sendPdfSaveToWebView(Map<String, dynamic> result) {
+void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for PDF save result');
       return;
@@ -779,8 +778,8 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
     }
   ''');
 
-  }
-  /// Handle image save requests
+    // REMOVED: All SnackBar code - now using protocols instead
+  } /// Handle image save requests
   void _handleImageSaveRequest(String message) async {
     if (_currentContext == null) {
       debugPrint('❌ No context available for image save request');

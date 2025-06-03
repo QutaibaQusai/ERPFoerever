@@ -134,9 +134,6 @@ class _WebViewPageState extends State<WebViewPage> {
   });
   }
 
-// SIMPLE & WORKING: Browser-Style Pull-to-Refresh
-
-// Replace your _injectNativePullToRefresh method with this simpler version:
 void _injectNativePullToRefresh() {
   try {
     debugPrint('🔄 Injecting STRICT pull-to-refresh (must pull to END)...');

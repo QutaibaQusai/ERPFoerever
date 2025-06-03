@@ -108,90 +108,73 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildMainScaffold(config) {
-    return Scaffold(
-      appBar: DynamicAppBar(selectedIndex: _selectedIndex),
-      body: _buildBody(config),
-      bottomNavigationBar: DynamicBottomNavigation(
-        selectedIndex: _selectedIndex,
-        onItemTapped: _onItemTapped,
-      ),
-      floatingActionButton: null,
-    );
+Widget _buildMainScaffold(config) {
+  return Scaffold(
+    appBar: DynamicAppBar(selectedIndex: _selectedIndex),
+    body: _buildBody(config), // ✅ This automatically sizes correctly
+    bottomNavigationBar: DynamicBottomNavigation(
+      selectedIndex: _selectedIndex,
+      onItemTapped: _onItemTapped,
+    ),
+    floatingActionButton: null,
+  );
+}
+
+
+Widget _buildBody(config) {
+  if (config.mainIcons.isEmpty) {
+    return const Center(child: Text('No navigation items configured'));
   }
 
-  Widget _buildBody(config) {
-    if (config.mainIcons.isEmpty) {
-      return const Center(child: Text('No navigation items configured'));
-    }
+  return IndexedStack(
+    index: _selectedIndex,
+    children: List.generate(
+      config.mainIcons.length,
+      (index) => _buildTabContent(index, config.mainIcons[index]),
+    ),
+  );
+}
 
-    return IndexedStack(
-      index: _selectedIndex,
-      children: List.generate(
-        config.mainIcons.length,
-        (index) => _buildTabContent(index, config.mainIcons[index]),
-      ),
-    );
+
+Widget _buildTabContent(int index, mainIcon) {
+  if (mainIcon.linkType == 'sheet_webview') {
+    return const Center(child: Text('This tab opens as a sheet'));
   }
 
-  Widget _buildTabContent(int index, mainIcon) {
-    if (mainIcon.linkType == 'sheet_webview') {
-      return const Center(child: Text('This tab opens as a sheet'));
-    }
+  // CLEANER APPROACH: Let Scaffold handle the sizing automatically
+  return Consumer<RefreshStateManager>(
+    builder: (context, refreshManager, child) {
+      final isRefreshAllowed = refreshManager.isRefreshEnabled;
 
-    return _buildRefreshableWebViewContent(index, mainIcon);
-  }
-
-  Widget _buildRefreshableWebViewContent(int index, mainIcon) {
-    return Consumer<RefreshStateManager>(
-      builder: (context, refreshManager, child) {
-        // Cache the refresh state to avoid calling shouldAllowRefresh during build
-        final isRefreshAllowed = refreshManager.isRefreshEnabled;
-
-        return NotificationListener<ScrollNotification>(
-          onNotification: (scrollNotification) => false,
-          child: RefreshIndicator(
-            // Use cached value instead of method call
-            onRefresh:
-                isRefreshAllowed
-                    ? () => _refreshWebView(index)
-                    : () async {
-                      debugPrint('🚫 Refresh blocked - sheet is open');
-                      return;
-                    },
-            child: SingleChildScrollView(
-              physics: const NeverScrollableScrollPhysics(),
-              child: SizedBox(
-                height:
-                    MediaQuery.of(context).size.height -
-                    kToolbarHeight -
-                    kBottomNavigationBarHeight -
-                    MediaQuery.of(context).padding.top,
-                child: Stack(
-                  children: [
-                    _buildWebView(index, mainIcon.link),
-                    if (_loadingStates[index] == true ||
-                        _isRefreshingStates[index] == true)
-                      const LoadingWidget(),
-                    // Use cached value for refresh indicator visibility
-                    if (_isAtTopStates[index] == true &&
-                        _isRefreshingStates[index] == false &&
-                        isRefreshAllowed) // Use cached value
-                      Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(height: 2, color: Colors.transparent),
-                      ),
-                  ],
-                ),
+      return RefreshIndicator(
+        onRefresh: isRefreshAllowed
+            ? () => _refreshWebView(index)
+            : () async {
+                debugPrint('🚫 Refresh blocked - sheet is open');
+                return;
+              },
+        child: Stack(
+          children: [
+            _buildWebView(index, mainIcon.link),
+            if (_loadingStates[index] == true || _isRefreshingStates[index] == true)
+              const LoadingWidget(),
+            if (_isAtTopStates[index] == true &&
+                _isRefreshingStates[index] == false &&
+                isRefreshAllowed)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(height: 2, color: Colors.transparent),
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
+          ],
+        ),
+      );
+    },
+  );
+}
+
+
 
   Future<void> _refreshWebView(int index) async {
     final refreshManager = Provider.of<RefreshStateManager>(
@@ -306,21 +289,25 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     return WebViewWidget(controller: controller);
   }
 
-  void _injectNativePullToRefresh(WebViewController controller, int index) {
-    try {
-      final refreshChannelName = _refreshChannelNames[index]!;
+void _injectNativePullToRefresh(WebViewController controller, int index) {
+  try {
+    final refreshChannelName = _refreshChannelNames[index]!;
+    
+    // Get current theme from Flutter
+    final brightness = Theme.of(context).brightness;
+    final currentFlutterTheme = brightness == Brightness.dark ? 'dark' : 'light';
 
-      debugPrint(
-        '🔄 Injecting STRICT pull-to-refresh (must pull to END) for tab $index...',
-      );
+    debugPrint(
+      '🔄 Injecting STRICT pull-to-refresh with Flutter theme sync for tab $index...',
+    );
 
-      controller.runJavaScript('''
+    controller.runJavaScript('''
     (function() {
-      console.log('🔄 Starting STRICT pull-to-refresh (must complete pull) for main screen tab $index...');
+      console.log('🔄 Starting STRICT pull-to-refresh with Flutter theme sync for main screen tab $index...');
       
       // STRICT configuration - must pull all the way
-      const PULL_THRESHOLD = 450;  // Must pull THIS far to activate (INCREASED FOR TESTING)
-      const MIN_PULL_SPEED = 150;   // Minimum pull distance to even start
+      const PULL_THRESHOLD = 450;
+      const MIN_PULL_SPEED = 150;
       const channelName = '$refreshChannelName';
       const tabIndex = $index;
       
@@ -331,12 +318,38 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       // State variables
       let startY = 0;
       let currentPull = 0;
-      let maxPull = 0;  // Track maximum pull distance
+      let maxPull = 0;
       let isPulling = false;
       let isRefreshing = false;
       let canPull = false;
-      let hasReachedThreshold = false;  // NEW: Must reach threshold to refresh
+      let hasReachedThreshold = false;
       let refreshBlocked = false;
+      let currentTheme = '$currentFlutterTheme'; // ✅ Start with Flutter's current theme
+      
+      // Function to detect current theme (enhanced with Flutter preference)
+      function detectCurrentTheme() {
+        // Always prefer the theme set by Flutter
+        return currentTheme;
+      }
+      
+      // Function to get theme colors
+      function getThemeColors(theme) {
+        if (theme === 'dark') {
+          return {
+            background: 'rgba(40, 40, 40, 0.95)',
+            progressDefault: '#60A5FA',
+            progressReady: '#34D399',
+            shadow: '0 4px 12px rgba(0, 0, 0, 0.4)'
+          };
+        } else {
+          return {
+            background: 'rgba(255, 255, 255, 0.95)',
+            progressDefault: '#0078d7',
+            progressReady: '#28a745',
+            shadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+          };
+        }
+      }
       
       // Function to check if refresh is allowed
       function isRefreshAllowed() {
@@ -360,22 +373,57 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         }
       };
       
-      // Create simple animation-only refresh indicator
+      // ✅ NEW: Function for Flutter to update theme
+      window.updateRefreshTheme = function(newTheme) {
+        if (newTheme && newTheme !== currentTheme) {
+          console.log('🎨 Flutter theme update: ' + currentTheme + ' → ' + newTheme);
+          currentTheme = newTheme;
+          updateIndicatorTheme();
+          return true;
+        }
+        return false;
+      };
+      
+      // Create refresh indicator with dynamic theming
       const refreshDiv = document.createElement('div');
       refreshDiv.id = 'strict-refresh-main-' + tabIndex;
       
-      // Simple circular animation only - NO TEXT
       refreshDiv.innerHTML = \`
         <div class="refresh-circle">
           <svg class="refresh-svg" width="24" height="24" viewBox="0 0 24 24">
-            <circle class="refresh-progress" cx="12" cy="12" r="10" fill="none" stroke="#0078d7" stroke-width="2" 
+            <circle class="refresh-progress" cx="12" cy="12" r="10" fill="none" stroke-width="2" 
                     stroke-linecap="round" stroke-dasharray="63" stroke-dashoffset="63" 
                     transform="rotate(-90 12 12)"/>
           </svg>
         </div>
       \`;
       
-      // Simple, fixed positioning - NO BLACK AREA
+      // Function to update indicator theme
+      function updateIndicatorTheme() {
+        const theme = detectCurrentTheme();
+        const colors = getThemeColors(theme);
+        console.log('🎨 Updating refresh indicator theme to:', theme);
+        
+        // Update background and shadow
+        refreshDiv.style.background = colors.background;
+        refreshDiv.style.boxShadow = colors.shadow;
+        
+        // Update progress circle color
+        const progressCircle = refreshDiv.querySelector('.refresh-progress');
+        if (progressCircle) {
+          if (hasReachedThreshold) {
+            progressCircle.style.stroke = colors.progressReady;
+          } else {
+            progressCircle.style.stroke = colors.progressDefault;
+          }
+        }
+        
+        // Update CSS custom properties for animations
+        document.documentElement.style.setProperty('--refresh-default-color', colors.progressDefault);
+        document.documentElement.style.setProperty('--refresh-ready-color', colors.progressReady);
+      }
+      
+      // Initial positioning and theming
       refreshDiv.style.cssText = \`
         position: fixed;
         top: 10px;
@@ -383,21 +431,24 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         transform: translateX(-50%);
         width: 40px;
         height: 40px;
-        background: rgba(255,255,255,0.95);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 9999;
         border-radius: 50%;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         opacity: 0;
         transition: all 0.2s ease;
         pointer-events: none;
       \`;
       
-      // Simple animation styles
+      // Dynamic animation styles with CSS custom properties
       const circleStyles = document.createElement('style');
       circleStyles.innerHTML = \`
+        :root {
+          --refresh-default-color: #0078d7;
+          --refresh-ready-color: #28a745;
+        }
+        
         .refresh-circle {
           width: 24px;
           height: 24px;
@@ -409,21 +460,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         }
         
         .refresh-progress {
-          transition: stroke-dashoffset 0.1s ease-out;
+          transition: stroke-dashoffset 0.1s ease-out, stroke 0.2s ease;
+          stroke: var(--refresh-default-color);
         }
         
-        /* Ready state - green */
         .refresh-ready .refresh-progress {
-          stroke: #28a745 !important;
+          stroke: var(--refresh-ready-color) !important;
         }
         
-        /* Refreshing state - spinning */
         .refresh-spinning .refresh-svg {
           animation: simpleRefreshSpin 1s linear infinite;
         }
         
         .refresh-spinning .refresh-progress {
-          stroke: #0078d7 !important;
+          stroke: var(--refresh-default-color) !important;
           stroke-dasharray: 16;
           stroke-dashoffset: 0;
           animation: simpleRefreshProgress 1.2s ease-in-out infinite;
@@ -439,16 +489,13 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           50% { stroke-dasharray: 16; stroke-dashoffset: 0; }
           100% { stroke-dasharray: 16; stroke-dashoffset: -16; }
         }
-        
-        @media (prefers-color-scheme: dark) {
-          #strict-refresh-main-\${tabIndex} {
-            background: rgba(40,40,40,0.95) !important;
-          }
-        }
       \`;
       
       document.head.appendChild(circleStyles);
       document.body.appendChild(refreshDiv);
+      
+      // Initial theme setup with Flutter's current theme
+      updateIndicatorTheme();
       
       // PREVENT BLACK AREA - Fix body overflow
       document.body.style.cssText += \`
@@ -467,20 +514,17 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         return scrollTop <= 3;
       }
       
-      // Update simple animation indicator
+      // Update refresh indicator with dynamic theming
       function updateRefresh(distance) {
         const progress = Math.min(distance / PULL_THRESHOLD, 1);
         
-        // Show indicator only when pulling
         refreshDiv.style.opacity = progress > 0.1 ? '1' : '0';
         
-        // Update circular progress (0-100%)
         const circleProgress = progress * 100;
-        const strokeDashoffset = 63 - (circleProgress * 0.63); // 63 is circumference
+        const strokeDashoffset = 63 - (circleProgress * 0.63);
         const progressCircle = refreshDiv.querySelector('.refresh-progress');
         progressCircle.style.strokeDashoffset = strokeDashoffset;
         
-        // Update color based on progress - ANIMATION ONLY
         refreshDiv.classList.remove('refresh-ready');
         if (progress >= 1) {
           hasReachedThreshold = true;
@@ -489,18 +533,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           hasReachedThreshold = false;
         }
         
-        console.log(\`🔄 Main screen tab $index animation: \${Math.round(progress * 100)}%\`);
+        updateIndicatorTheme();
+        
+        console.log(\`🔄 Main screen tab $index animation: \${Math.round(progress * 100)}% (theme: \${currentTheme})\`);
       }
       
-      // Hide simple indicator
+      // Hide indicator with theme cleanup
       function hideRefresh() {
         refreshDiv.style.opacity = '0';
         refreshDiv.classList.remove('refresh-ready', 'refresh-spinning');
         refreshDiv.querySelector('.refresh-progress').style.strokeDashoffset = '63';
         hasReachedThreshold = false;
+        updateIndicatorTheme();
       }
       
-      // Start simple refreshing animation
+      // Start refreshing animation with current theme
       function doRefresh() {
         if (isRefreshing || !hasReachedThreshold || !isRefreshAllowed()) {
           console.log(\`❌ Main screen tab $index refresh denied\`);
@@ -511,25 +558,23 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         console.log('✅ MAIN SCREEN TAB $index REFRESH TRIGGERED!');
         isRefreshing = true;
         
-        // Show simple spinning animation
         refreshDiv.classList.remove('refresh-ready');
         refreshDiv.classList.add('refresh-spinning');
         refreshDiv.style.opacity = '1';
+        updateIndicatorTheme();
         
-        // Send refresh signal
         if (window[channelName]) {
           window[channelName].postMessage('refresh');
           console.log('📤 Main screen tab $index refresh message sent');
         }
         
-        // Auto-hide after 1.5 seconds
         setTimeout(() => {
           hideRefresh();
           isRefreshing = false;
         }, 1500);
       }
       
-      // STRICT Touch handlers
+      // Touch handlers (keeping the same as before)
       document.addEventListener('touchstart', function(e) {
         if (isRefreshing || !isRefreshAllowed()) return;
         
@@ -540,13 +585,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           maxPull = 0;
           isPulling = false;
           hasReachedThreshold = false;
-          console.log('👆 MAIN SCREEN TAB $index: Touch start at top - ready to pull');
         } else {
           canPull = false;
         }
       }, { passive: false });
       
-      // STRICT Touch move - only show indicator after minimum pull
       document.addEventListener('touchmove', function(e) {
         if (!canPull || isRefreshing || !isRefreshAllowed()) return;
         
@@ -555,47 +598,35 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         
         if (deltaY > 0 && isAtTop()) {
           currentPull = deltaY;
-          maxPull = Math.max(maxPull, deltaY);  // Track maximum pull reached
+          maxPull = Math.max(maxPull, deltaY);
           
-          // Only start showing indicator after minimum pull distance
           if (deltaY >= MIN_PULL_SPEED) {
-            e.preventDefault(); // Prevent default scroll
+            e.preventDefault();
             isPulling = true;
             updateRefresh(deltaY);
           }
         } else if (isPulling) {
-          // If user scrolls up or away from top, reset
           isPulling = false;
           hideRefresh();
         }
       }, { passive: false });
       
-      // STRICT Touch end - ONLY refresh if threshold was reached
       document.addEventListener('touchend', function(e) {
         if (!isPulling || isRefreshing || !isRefreshAllowed()) {
-          // Reset states even if not pulling
           isPulling = false;
           canPull = false;
           hasReachedThreshold = false;
           return;
         }
         
-        console.log(\`🖱️ MAIN SCREEN TAB $index STRICT RELEASE:
-          - Current pull: \${Math.round(currentPull)}px
-          - Max pull reached: \${Math.round(maxPull)}px  
-          - Threshold: \${PULL_THRESHOLD}px
-          - Threshold reached: \${hasReachedThreshold}
-          - Will refresh: \${hasReachedThreshold}\`);
-        
         if (hasReachedThreshold && maxPull >= PULL_THRESHOLD) {
           console.log('✅ MAIN SCREEN TAB $index STRICT SUCCESS: User pulled to threshold - refreshing!');
           doRefresh();
         } else {
-          console.log(\`❌ MAIN SCREEN TAB $index STRICT FAIL: Not enough pull (max: \${Math.round(maxPull)}px, needed: \${PULL_THRESHOLD}px)\`);
+          console.log(\`❌ MAIN SCREEN TAB $index STRICT FAIL: Not enough pull\`);
           hideRefresh();
         }
         
-        // Reset all states
         isPulling = false;
         canPull = false;
         currentPull = 0;
@@ -604,9 +635,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         hasReachedThreshold = false;
       }, { passive: false });
       
-      // Touch cancel - always reset
       document.addEventListener('touchcancel', function(e) {
-        console.log('❌ MAIN SCREEN TAB $index STRICT: Touch cancelled - resetting');
         hideRefresh();
         isPulling = false;
         canPull = false;
@@ -615,48 +644,21 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         maxPull = 0;
       }, { passive: true });
       
-      console.log('✅ MAIN SCREEN TAB $index STRICT pull-to-refresh ready!');
-      console.log(\`📋 MAIN SCREEN TAB $index STRICT Rules:
-        - Must be at top of page
-        - Must pull at least \${MIN_PULL_SPEED}px to start
-        - Must pull \${PULL_THRESHOLD}px to activate refresh
-        - Must RELEASE while in green state to refresh
-        - Any incomplete pull will bounce back\`);
-      
-      // Test function
-      window.testStrictRefreshMain = function() {
-        console.log('🧪 Testing strict refresh for main screen tab $index...');
-        hasReachedThreshold = true;
-        doRefresh();
-      };
-      
-      // Status function
-      window.getRefreshStatusMain = function() {
-        return {
-          tabIndex: $index,
-          isPulling: isPulling,
-          currentPull: currentPull,
-          maxPull: maxPull,
-          hasReachedThreshold: hasReachedThreshold,
-          isRefreshing: isRefreshing,
-          canPull: canPull,
-          refreshBlocked: refreshBlocked
-        };
-      };
+      console.log('✅ MAIN SCREEN TAB $index pull-to-refresh with Flutter theme sync ready!');
+      console.log('🎨 Current theme from Flutter:', currentTheme);
       
     })();
     ''');
 
-      debugPrint(
-        '✅ STRICT pull-to-refresh injected for main screen tab $index',
-      );
-    } catch (e) {
-      debugPrint(
-        '❌ Error injecting STRICT refresh for main screen tab $index: $e',
-      );
-    }
+    debugPrint(
+      '✅ STRICT pull-to-refresh with Flutter theme sync injected for main screen tab $index',
+    );
+  } catch (e) {
+    debugPrint(
+      '❌ Error injecting themed refresh for main screen tab $index: $e',
+    );
   }
-
+}
   Future<void> _handleJavaScriptRefresh(int index) async {
     final refreshManager = Provider.of<RefreshStateManager>(
       context,
@@ -1345,57 +1347,78 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _handleThemeChangeRequest(String url) {
-    String themeMode = 'system';
+void _handleThemeChangeRequest(String url) {
+  String themeMode = 'system';
 
-    if (url.startsWith('dark-mode://')) {
-      themeMode = 'dark';
-    } else if (url.startsWith('light-mode://')) {
-      themeMode = 'light';
-    } else if (url.startsWith('system-mode://')) {
-      themeMode = 'system';
+  if (url.startsWith('dark-mode://')) {
+    themeMode = 'dark';
+  } else if (url.startsWith('light-mode://')) {
+    themeMode = 'light';
+  } else if (url.startsWith('system-mode://')) {
+    themeMode = 'system';
+  }
+
+  final themeService = Provider.of<ThemeService>(context, listen: false);
+  themeService.updateThemeMode(themeMode);
+
+  // ✅ NEW: Notify ALL WebView controllers about theme change
+  _notifyAllControllersThemeChange(themeMode);
+}
+void _notifyAllControllersThemeChange(String themeMode) {
+  // Get the current theme brightness
+  final brightness = Theme.of(context).brightness;
+  final actualTheme = themeMode == 'system' 
+    ? (brightness == Brightness.dark ? 'dark' : 'light')
+    : themeMode;
+
+  debugPrint('🎨 Notifying all WebView controllers of theme change: $actualTheme');
+
+  // Notify all active controllers
+  for (int i = 0; i < (_configService.config?.mainIcons.length ?? 0); i++) {
+    try {
+      final controller = _controllerManager.getController(i, '', context);
+      _sendThemeUpdateToController(controller, actualTheme, i);
+    } catch (e) {
+      debugPrint('❌ Error notifying controller $i of theme change: $e');
     }
+  }
+}
 
-    final themeService = Provider.of<ThemeService>(context, listen: false);
-    themeService.updateThemeMode(themeMode);
-
-    // NEW: Call JavaScript functions for theme changes
-    final controller = _controllerManager.getController(
-      _selectedIndex,
-      '',
-      context,
-    );
-
-    if (themeMode == 'dark') {
-      controller.runJavaScript('''
-      if (typeof setDarkMode === 'function') {
+// 3. Add this method to send theme updates to a specific controller:
+void _sendThemeUpdateToController(WebViewController controller, String theme, int index) {
+  controller.runJavaScript('''
+    try {
+      console.log('🎨 Flutter theme change notification received: $theme for tab $index');
+      
+      // Update refresh indicator theme if it exists
+      if (typeof window.updateRefreshTheme === 'function') {
+        window.updateRefreshTheme('$theme');
+        console.log('✅ Refresh indicator theme updated to: $theme');
+      }
+      
+      // Call existing theme change handlers
+      if (typeof setDarkMode === 'function' && '$theme' === 'dark') {
         setDarkMode();
         console.log("Called setDarkMode()");
-      } else if (typeof window.handleThemeChange === 'function') {
-        window.handleThemeChange('dark');
-        console.log("Called handleThemeChange with: dark");
-      } else {
-        var event = new CustomEvent('themeChanged', { detail: { theme: 'dark' } });
-        document.dispatchEvent(event);
-        console.log("Dispatched themeChanged event for dark mode");
-      }
-    ''');
-    } else if (themeMode == 'light') {
-      controller.runJavaScript('''
-      if (typeof setLightMode === 'function') {
+      } else if (typeof setLightMode === 'function' && '$theme' === 'light') {
         setLightMode();
         console.log("Called setLightMode()");
       } else if (typeof window.handleThemeChange === 'function') {
-        window.handleThemeChange('light');
-        console.log("Called handleThemeChange with: light");
+        window.handleThemeChange('$theme');
+        console.log("Called handleThemeChange with: $theme");
       } else {
-        var event = new CustomEvent('themeChanged', { detail: { theme: 'light' } });
+        var event = new CustomEvent('themeChanged', { 
+          detail: { theme: '$theme', source: 'flutter' } 
+        });
         document.dispatchEvent(event);
-        console.log("Dispatched themeChanged event for light mode");
+        console.log("Dispatched themeChanged event for $theme mode");
       }
-    ''');
+      
+    } catch (error) {
+      console.error("❌ Error handling Flutter theme update:", error);
     }
-  }
+  ''');
+}
 
   void _handleNewWebNavigation(String url) {
     // FIXED: Changed default URL to mobile.erpforever.com

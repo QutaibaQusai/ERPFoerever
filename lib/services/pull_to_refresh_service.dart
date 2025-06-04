@@ -1,4 +1,5 @@
-// lib/services/pull_to_refresh_service.dart - FIXED SHEET VERSION with Dynamic Content Support
+// lib/services/pull_to_refresh_service.dart - FIXED: Main screen pull-to-refresh working consistently
+
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -27,7 +28,7 @@ class PullToRefreshService {
       final thresholds = _getThresholds(context);
       final positioning = _getPositioning(context);
       
-      debugPrint('🔄 Injecting FIXED pull-to-refresh for $contextName...');
+      debugPrint('🔄 Injecting FIXED pull-to-refresh for $contextName (tab: $tabIndex)...');
 
       // Get current theme from Flutter
       String currentFlutterTheme = 'light';
@@ -38,7 +39,7 @@ class PullToRefreshService {
 
       controller.runJavaScript('''
       (function() {
-        console.log('🔄 Starting FIXED pull-to-refresh for $contextName...');
+        console.log('🔄 Starting ENHANCED pull-to-refresh for $contextName (tab: $tabIndex)...');
         
         // Configuration
         const PULL_THRESHOLD = ${thresholds['pullThreshold']};
@@ -47,11 +48,15 @@ class PullToRefreshService {
         const contextName = '$contextName';
         const elementId = '$elementId';
         const isSheetContext = '$contextName' === 'WEBVIEW SHEET';
-        ${tabIndex > 0 ? 'const tabIndex = $tabIndex;' : ''}
+        const isMainScreen = '$contextName' === 'MAIN SCREEN';
+        const tabIndex = $tabIndex;
         
-        // Remove any existing refresh elements
+        // Remove any existing refresh elements for this tab
         const existing = document.getElementById(elementId);
-        if (existing) existing.remove();
+        if (existing) {
+          existing.remove();
+          console.log('🗑️ Removed existing refresh element for ' + contextName);
+        }
         
         // State variables
         let startY = 0;
@@ -64,10 +69,12 @@ class PullToRefreshService {
         let refreshBlocked = false;
         let currentTheme = '$currentFlutterTheme';
         
-        // ENHANCED: Dynamic content tracking for sheets
+        // MAIN SCREEN: Simple and reliable detection
         let lastScrollTop = 0;
         let touchStartTime = 0;
         let initialTouchY = 0;
+        
+        // SHEET: Enhanced content tracking
         window.lastContentChangeTime = window.lastContentChangeTime || 0;
         
         // Function to detect current theme
@@ -127,46 +134,66 @@ class PullToRefreshService {
           return false;
         };
         
-        // ENHANCED: Top detection with CHAT-SPECIFIC scroll position checking
+        // CONTEXT-SPECIFIC: Top detection logic
         function isAtTop() {
-          // Get scroll position from multiple sources with debouncing
           const scrollTop1 = window.pageYOffset || 0;
           const scrollTop2 = document.documentElement.scrollTop || 0;
           const scrollTop3 = document.body.scrollTop || 0;
           const scrollTop = Math.max(scrollTop1, scrollTop2, scrollTop3);
           
-          if (isSheetContext) {
-            // CRITICAL: For sheets, use STRICT detection with chat-specific checking
+          if (isMainScreen) {
+            // MAIN SCREEN: Simple and reliable (same as before but cleaner)
+            const isAtMainTop = scrollTop <= 5; // Small tolerance
+            
+            // Additional check: ensure we're not scrolling actively
+            const now = Date.now();
+            const timeDiff = now - (window.lastScrollCheck || now);
+            const scrollDiff = scrollTop - (window.lastScrollPosition || scrollTop);
+            const scrollVelocity = timeDiff > 0 ? Math.abs(scrollDiff / timeDiff) : 0;
+            
+            window.lastScrollCheck = now;
+            window.lastScrollPosition = scrollTop;
+            
+            const isActivelyScrolling = scrollVelocity > 1.0; // Higher threshold for main screen
+            
+            const result = isAtMainTop && !isActivelyScrolling;
+            
+            if (!result && tabIndex === 0) { // Only log for active tab
+              console.log('📍 Main Screen tab ' + tabIndex + ' NOT at top:', {
+                scrollTop: scrollTop, 
+                isActivelyScrolling: isActivelyScrolling,
+                scrollVelocity: scrollVelocity.toFixed(2)
+              });
+            }
+            
+            return result;
+            
+          } else if (isSheetContext) {
+            // SHEET: Enhanced detection (keep existing complex logic)
             const isExactlyAtTop = scrollTop === 0;
             
-            // LAG FIX: Double-check scroll position after small delay to catch lag
-            if (isExactlyAtTop && window.lagCheckTimeout) {
+            if (window.lagCheckTimeout) {
               clearTimeout(window.lagCheckTimeout);
             }
             
-            // Additional check: ensure we're not in the middle of content updates
             const hasRecentContentChange = window.lastContentChangeTime && 
               (Date.now() - window.lastContentChangeTime) < 1000;
             
-            // CHAT-SPECIFIC FIX: Check for chat/message containers more aggressively
             const chatSelectors = [
               '[style*="overflow"]',
               '.chat-container', 
               '.message-container', 
               '.content-container',
               '[data-dynamic-content="true"]',
-              // AI Assistant specific selectors
               '[class*="chat"]',
               '[class*="message"]',
               '[class*="conversation"]',
               '[id*="chat"]',
               '[id*="message"]',
-              // Generic scrollable areas
               'div[style*="overflow-y"]',
               'div[style*="scroll"]',
               '.scroll',
               '.scrollable',
-              // Common chat UI patterns
               'main',
               'section',
               'article'
@@ -175,21 +202,15 @@ class PullToRefreshService {
             const scrollableElements = document.querySelectorAll(chatSelectors.join(', '));
             let allContainersAtTop = true;
             let maxContainerScroll = 0;
-            let scrolledContainerInfo = [];
             
             for (let element of scrollableElements) {
               const elementScrollTop = element.scrollTop || 0;
               if (elementScrollTop > 0) {
                 allContainersAtTop = false;
                 maxContainerScroll = Math.max(maxContainerScroll, elementScrollTop);
-                scrolledContainerInfo.push({
-                  element: element.tagName + '.' + (element.className || 'no-class'),
-                  scrollTop: elementScrollTop
-                });
               }
             }
             
-            // ADDITIONAL CHECK: Look for any element that might be a scrollable chat area
             const allDivs = document.querySelectorAll('div');
             for (let div of allDivs) {
               const style = window.getComputedStyle(div);
@@ -200,14 +221,9 @@ class PullToRefreshService {
               if (hasOverflow && hasHeight && scrollTop > 0) {
                 allContainersAtTop = false;
                 maxContainerScroll = Math.max(maxContainerScroll, scrollTop);
-                scrolledContainerInfo.push({
-                  element: 'computed-' + div.tagName + '.' + (div.className || 'no-class'),
-                  scrollTop: scrollTop
-                });
               }
             }
             
-            // LAG FIX: Check if we're actually scrolling (velocity detection)
             const now = Date.now();
             const timeDiff = now - (window.lastScrollCheck || now);
             const scrollDiff = scrollTop - (window.lastScrollPosition || scrollTop);
@@ -216,30 +232,16 @@ class PullToRefreshService {
             window.lastScrollCheck = now;
             window.lastScrollPosition = scrollTop;
             
-            // If scroll velocity is high, we're actively scrolling - be more strict
             const isActivelyScrolling = scrollVelocity > 0.5;
             
-            const finalResult = isExactlyAtTop && 
-                               allContainersAtTop && 
-                               !hasRecentContentChange && 
-                               !isActivelyScrolling &&
-                               maxContainerScroll === 0;
-            
-            // Enhanced logging for debugging
-            if (!finalResult) {
-              console.log('📍 Sheet CHAT-FIXED check - NOT AT TOP:', {
-                scrollTop: scrollTop,
-                maxContainerScroll: maxContainerScroll,
-                isActivelyScrolling: isActivelyScrolling,
-                scrollVelocity: scrollVelocity.toFixed(2),
-                scrolledContainers: scrolledContainerInfo.length,
-                scrolledContainerDetails: scrolledContainerInfo
-              });
-            }
-            
-            return finalResult;
+            return isExactlyAtTop && 
+                   allContainersAtTop && 
+                   !hasRecentContentChange && 
+                   !isActivelyScrolling &&
+                   maxContainerScroll === 0;
+                   
           } else {
-            // For main screen and regular webview, allow small tolerance
+            // WEBVIEW PAGE: Standard detection
             return scrollTop <= 3;
           }
         }
@@ -262,7 +264,6 @@ class PullToRefreshService {
         function updateIndicatorTheme() {
           const theme = detectCurrentTheme();
           const colors = getThemeColors(theme);
-          console.log('🎨 Updating ' + contextName + ' refresh indicator theme to:', theme);
           
           refreshDiv.style.background = colors.background;
           refreshDiv.style.boxShadow = colors.shadow;
@@ -354,7 +355,7 @@ class PullToRefreshService {
         // Initial theme setup
         updateIndicatorTheme();
         
-        // Prevent overscroll and setup proper scroll area for sheets
+        // Prevent overscroll and setup proper scroll area
         if (isSheetContext) {
           document.body.style.cssText += \`
             overscroll-behavior-y: contain;
@@ -362,7 +363,6 @@ class PullToRefreshService {
             -webkit-overflow-scrolling: touch;
             padding-top: 0px;
           \`;
-          
           document.documentElement.style.scrollPaddingTop = '0px';
           document.body.style.marginTop = '0px';
         } else {
@@ -379,7 +379,6 @@ class PullToRefreshService {
           
           refreshDiv.style.opacity = progress > 0.1 ? '1' : '0';
           
-          // Special handling for sheet context to show in scroll area
           if (isSheetContext) {
             const translateY = Math.min(distance * 0.5, 80) - 60;
             refreshDiv.style.transform = \`translateX(-50%) translateY(\${translateY}px)\`;
@@ -405,8 +404,6 @@ class PullToRefreshService {
           }
           
           updateIndicatorTheme();
-          
-          console.log(\`🔄 \${contextName} animation: \${Math.round(progress * 100)}% (theme: \${currentTheme})\`);
         }
         
         // Hide indicator
@@ -416,7 +413,6 @@ class PullToRefreshService {
           refreshDiv.querySelector('.refresh-progress').style.strokeDashoffset = '63';
           hasReachedThreshold = false;
           
-          // Reset body transform for sheet context
           if (isSheetContext) {
             document.body.style.transform = 'translateY(0px)';
             document.body.style.transition = 'transform 0.2s ease-out';
@@ -429,19 +425,18 @@ class PullToRefreshService {
         // Start refreshing animation
         function doRefresh() {
           if (isRefreshing || !hasReachedThreshold || !isRefreshAllowed()) {
-            console.log(\`❌ \${contextName} refresh denied\`);
+            console.log(\`❌ \${contextName} refresh denied - isRefreshing: \${isRefreshing}, hasThreshold: \${hasReachedThreshold}, allowed: \${isRefreshAllowed()}\`);
             hideRefresh();
             return;
           }
           
-          console.log('✅ ' + contextName.toUpperCase() + ' REFRESH TRIGGERED!');
+          console.log('✅ ' + contextName + ' TAB ' + tabIndex + ' REFRESH TRIGGERED!');
           isRefreshing = true;
           
           refreshDiv.classList.remove('refresh-ready');
           refreshDiv.classList.add('refresh-spinning');
           refreshDiv.style.opacity = '1';
           
-          // Position during refresh for sheet context
           if (isSheetContext) {
             refreshDiv.style.transform = 'translateX(-50%) translateY(20px)';
             document.body.style.transform = 'translateY(20px)';
@@ -451,7 +446,9 @@ class PullToRefreshService {
           
           if (window[channelName]) {
             window[channelName].postMessage('refresh');
-            console.log('📤 ' + contextName + ' refresh message sent');
+            console.log('📤 ' + contextName + ' tab ' + tabIndex + ' refresh message sent via channel: ' + channelName);
+          } else {
+            console.error('❌ Refresh channel not found: ' + channelName);
           }
           
           setTimeout(() => {
@@ -460,13 +457,13 @@ class PullToRefreshService {
           }, 1500);
         }
         
-        // ENHANCED: Touch event handlers with LAG-FREE scroll detection
+        // ENHANCED: Touch event handlers with context-specific logic
         document.addEventListener('touchstart', function(e) {
           if (isRefreshing || !isRefreshAllowed()) return;
           
           touchStartTime = Date.now();
           
-          // LAG FIX: Initialize scroll tracking
+          // Initialize scroll tracking
           window.lastScrollCheck = Date.now();
           window.lastScrollPosition = Math.max(
             window.pageYOffset || 0,
@@ -474,7 +471,7 @@ class PullToRefreshService {
             document.body.scrollTop || 0
           );
           
-          // LAG FIX: Wait a small moment to ensure scroll position is settled
+          // Small delay to ensure scroll position is settled
           setTimeout(function() {
             if (!e.defaultPrevented) {
               const currentlyAtTop = isAtTop();
@@ -484,7 +481,6 @@ class PullToRefreshService {
                 document.body.scrollTop || 0
               );
               
-              // Store initial scroll position to detect scroll direction
               lastScrollTop = currentScrollTop;
               
               if (currentlyAtTop) {
@@ -496,19 +492,15 @@ class PullToRefreshService {
                 isPulling = false;
                 hasReachedThreshold = false;
                 
-                if (isSheetContext) {
-                  console.log('👆 Sheet LAG-FIXED: Touch start EXACTLY at TOP (scroll: ' + currentScrollTop + 'px) - ready to pull');
-                } else {
-                  console.log('👆 ' + contextName + ': Touch start at TOP - ready to pull');
-                }
+                console.log('👆 ' + contextName + ' tab ' + tabIndex + ': Touch start at TOP (scroll: ' + currentScrollTop + 'px) - ready to pull');
               } else {
                 canPull = false;
-                if (isSheetContext) {
-                  console.log('🚫 Sheet LAG-FIXED: Touch start NOT at exact top - scroll position:', currentScrollTop + 'px - NO PULL ALLOWED');
+                if (isMainScreen && tabIndex === 0) { // Only log for active main screen tab
+                  console.log('🚫 ' + contextName + ' tab ' + tabIndex + ': Touch start NOT at top - scroll: ' + currentScrollTop + 'px');
                 }
               }
             }
-          }, 10); // Small delay to avoid lag issues
+          }, isMainScreen ? 5 : 10); // Shorter delay for main screen
           
         }, { passive: false });
         
@@ -518,60 +510,68 @@ class PullToRefreshService {
           const currentY = e.touches[0].clientY;
           const deltaY = currentY - startY;
           
-          // LAG FIX: Get current scroll position with multiple checks
           const currentScrollTop = Math.max(
             window.pageYOffset || 0,
             document.documentElement.scrollTop || 0,
             document.body.scrollTop || 0
           );
           
-          // ENHANCED: Continuously check if still at top during touch move for sheets
-          if (isSheetContext) {
-            // LAG FIX: Use immediate check instead of function call during touch move
+          // Context-specific touch move handling
+          if (isMainScreen) {
+            // MAIN SCREEN: Simplified logic for better reliability
+            if (deltaY > 0 && isAtTop()) {
+              // Check if we're still at top and pulling down
+              if (currentScrollTop !== lastScrollTop) {
+                // Scroll position changed - this is page scrolling, not pull-to-refresh
+                console.log('🛑 Main Screen tab ' + tabIndex + ': Page scrolling detected - cancelling pull');
+                isPulling = false;
+                hideRefresh();
+                canPull = false;
+                return;
+              }
+              
+              currentPull = deltaY;
+              maxPull = Math.max(maxPull, deltaY);
+              
+              if (deltaY >= MIN_PULL_SPEED && currentScrollTop === 0) {
+                e.preventDefault();
+                isPulling = true;
+                updateRefresh(deltaY);
+                console.log('🔄 Main Screen tab ' + tabIndex + ': Valid pull - ' + deltaY + 'px');
+              }
+            } else {
+              if (isPulling) {
+                isPulling = false;
+                hideRefresh();
+                canPull = false;
+                console.log('🛑 Main Screen tab ' + tabIndex + ': Stopped pulling');
+              }
+            }
+            
+          } else if (isSheetContext) {
+            // SHEET: Keep existing complex logic
             const isExactlyAtTop = currentScrollTop === 0;
             
-            // LAG FIX: Check all containers immediately with CHAT-SPECIFIC selectors
             const chatSelectors = [
-              '[style*="overflow"]',
-              '.chat-container', 
-              '.message-container', 
-              '.content-container',
-              '[data-dynamic-content="true"]',
-              // AI Assistant specific selectors
-              '[class*="chat"]',
-              '[class*="message"]',
-              '[class*="conversation"]',
-              '[id*="chat"]',
-              '[id*="message"]',
-              // Generic scrollable areas
-              'div[style*="overflow-y"]',
-              'div[style*="scroll"]',
-              '.scroll',
-              '.scrollable',
-              // Common chat UI patterns
-              'main',
-              'section',
-              'article'
+              '[style*="overflow"]', '.chat-container', '.message-container', 
+              '.content-container', '[data-dynamic-content="true"]',
+              '[class*="chat"]', '[class*="message"]', '[class*="conversation"]',
+              '[id*="chat"]', '[id*="message"]', 'div[style*="overflow-y"]',
+              'div[style*="scroll"]', '.scroll', '.scrollable', 'main', 'section', 'article'
             ];
             
             const scrollableElements = document.querySelectorAll(chatSelectors.join(', '));
             let allContainersAtTop = true;
             let maxContainerScroll = 0;
-            let scrolledContainerInfo = [];
             
             for (let element of scrollableElements) {
               const elementScrollTop = element.scrollTop || 0;
               if (elementScrollTop > 0) {
                 allContainersAtTop = false;
                 maxContainerScroll = Math.max(maxContainerScroll, elementScrollTop);
-                scrolledContainerInfo.push({
-                  element: element.tagName + '.' + (element.className || 'no-class'),
-                  scrollTop: elementScrollTop
-                });
               }
             }
             
-            // CRITICAL: Additional deep check for computed overflow elements
             const allDivs = document.querySelectorAll('div');
             for (let div of allDivs) {
               const style = window.getComputedStyle(div);
@@ -582,64 +582,46 @@ class PullToRefreshService {
               if (hasOverflow && hasHeight && scrollTop > 0) {
                 allContainersAtTop = false;
                 maxContainerScroll = Math.max(maxContainerScroll, scrollTop);
-                scrolledContainerInfo.push({
-                  element: 'computed-' + div.tagName + '.' + (div.className || 'no-class'),
-                  scrollTop: scrollTop
-                });
               }
             }
             
-            const stillAtTop = isExactlyAtTop && allContainersAtTop;
-            
-            // CRITICAL FIX: Detect if user is scrolling the page content (not pulling to refresh)
-            // If scroll position changed from when touch started, this is page scrolling, not pull-to-refresh
             if (currentScrollTop !== lastScrollTop) {
-              console.log('🛑 Sheet LAG-FIXED: Page scrolling detected (was: ' + lastScrollTop + 'px, now: ' + currentScrollTop + 'px) - cancelling pull');
+              console.log('🛑 Sheet: Page scrolling detected - cancelling pull');
               isPulling = false;
               hideRefresh();
               canPull = false;
               return;
             }
             
-            // LAG FIX: Additional check for any container scrolling with CHAT-SPECIFIC detection
             if (maxContainerScroll > 0) {
-              console.log('🛑 Sheet CHAT-FIXED: Container scrolling detected - Details:', {
-                maxContainerScroll: maxContainerScroll,
-                scrolledContainers: scrolledContainerInfo
-              });
+              console.log('🛑 Sheet: Container scrolling detected - cancelling');
               isPulling = false;
               hideRefresh();
               canPull = false;
               return;
             }
             
-            // ENHANCED: Check for dynamic content changes during touch
             const hasContentChanged = window.lastContentChangeTime && 
               (Date.now() - window.lastContentChangeTime) < 500;
             
             if (hasContentChanged) {
-              console.log('🛑 Sheet: Dynamic content change detected during touch - cancelling pull');
+              console.log('🛑 Sheet: Content change detected - cancelling pull');
               isPulling = false;
               hideRefresh();
               canPull = false;
               return;
             }
             
-            // If not at top anymore, immediately cancel
+            const stillAtTop = isExactlyAtTop && allContainersAtTop;
+            
             if (!stillAtTop) {
-              console.log('🛑 Sheet LAG-FIXED: NO LONGER at top (scroll: ' + currentScrollTop + 'px, containerScroll: ' + maxContainerScroll + 'px) - cancelling pull');
+              console.log('🛑 Sheet: NO LONGER at top - cancelling pull');
               isPulling = false;
               hideRefresh();
               canPull = false;
               return;
             }
             
-            // Only allow pull if:
-            // 1. Pulling down (deltaY > 0)
-            // 2. Still at exact top (stillAtTop)
-            // 3. Scroll position hasn't changed (no page scrolling)
-            // 4. No recent content changes
-            // 5. No container scrolling
             if (deltaY > 0 && stillAtTop && currentScrollTop === 0 && !hasContentChanged && maxContainerScroll === 0) {
               currentPull = deltaY;
               maxPull = Math.max(maxPull, deltaY);
@@ -648,26 +630,16 @@ class PullToRefreshService {
                 e.preventDefault();
                 isPulling = true;
                 updateRefresh(deltaY);
-                console.log('🔄 Sheet LAG-FIXED: Valid pull -', deltaY + 'px (still at exact top, no scrolling, no content changes)');
+                console.log('🔄 Sheet: Valid pull - ' + deltaY + 'px');
               }
             } else {
-              if (deltaY <= 0) {
-                console.log('🛑 Sheet: Pulling up - cancelling');
-              } else if (!stillAtTop) {
-                console.log('🛑 Sheet LAG-FIXED: Not at top anymore - cancelling');
-              } else if (currentScrollTop !== 0) {
-                console.log('🛑 Sheet: Scroll position changed - cancelling');
-              } else if (hasContentChanged) {
-                console.log('🛑 Sheet: Content changed during pull - cancelling');
-              } else if (maxContainerScroll > 0) {
-                console.log('🛑 Sheet LAG-FIXED: Container is scrolled - cancelling');
-              }
               isPulling = false;
               hideRefresh();
               canPull = false;
             }
+            
           } else {
-            // Original logic for non-sheet contexts
+            // WEBVIEW PAGE: Standard logic
             if (deltaY > 0 && isAtTop()) {
               currentPull = deltaY;
               maxPull = Math.max(maxPull, deltaY);
@@ -681,61 +653,35 @@ class PullToRefreshService {
               isPulling = false;
               hideRefresh();
               canPull = false;
-              console.log('🛑 ' + contextName + ': Stopped pulling - not at top or scrolling up');
             }
           }
         }, { passive: false });
         
         document.addEventListener('touchend', function(e) {
           if (!isPulling || isRefreshing || !isRefreshAllowed()) {
-            // Reset all states
             isPulling = false;
             canPull = false;
             hasReachedThreshold = false;
             return;
           }
           
-          // FINAL ENHANCED CHECK: Must still be at top for sheets
           const finallyAtTop = isAtTop();
           const validPull = hasReachedThreshold && maxPull >= PULL_THRESHOLD;
           
-          if (isSheetContext) {
-            // ENHANCED: Must be exactly at top AND have valid pull AND no recent content changes
-            const hasRecentContentChange = window.lastContentChangeTime && 
-              (Date.now() - window.lastContentChangeTime) < 500;
-            const canRefresh = finallyAtTop && validPull && !hasRecentContentChange;
-            
-            const currentScrollTop = Math.max(
-              window.pageYOffset || 0,
-              document.documentElement.scrollTop || 0,
-              document.body.scrollTop || 0
-            );
-            
-            console.log('🏁 Sheet ENHANCED FINAL CHECK:', {
-              finallyAtTop: finallyAtTop,
-              validPull: validPull,
-              hasRecentContentChange: hasRecentContentChange,
-              canRefresh: canRefresh,
-              maxPull: maxPull,
-              threshold: PULL_THRESHOLD,
-              scrollTop: currentScrollTop
-            });
-            
-            if (canRefresh) {
-              console.log('✅ SHEET SUCCESS: Valid pull-to-refresh from exact top with no content changes!');
-              doRefresh();
-            } else {
-              console.log('❌ SHEET FAIL: Not at exact top, insufficient pull, or content changed recently');
-              hideRefresh();
-            }
+          console.log('🏁 ' + contextName + ' tab ' + tabIndex + ' FINAL CHECK:', {
+            finallyAtTop: finallyAtTop,
+            validPull: validPull,
+            maxPull: maxPull,
+            threshold: PULL_THRESHOLD,
+            hasReachedThreshold: hasReachedThreshold
+          });
+          
+          if (validPull && finallyAtTop) {
+            console.log('✅ ' + contextName + ' tab ' + tabIndex + ' SUCCESS: Valid pull-to-refresh!');
+            doRefresh();
           } else {
-            if (validPull && finallyAtTop) {
-              console.log('✅ ' + contextName.toUpperCase() + ' SUCCESS: User pulled to threshold at top - refreshing!');
-              doRefresh();
-            } else {
-              console.log('❌ ' + contextName.toUpperCase() + ' FAIL: Not enough pull or not at top');
-              hideRefresh();
-            }
+            console.log('❌ ' + contextName + ' tab ' + tabIndex + ' FAIL: Invalid pull-to-refresh');
+            hideRefresh();
           }
           
           // Reset all states
@@ -756,16 +702,13 @@ class PullToRefreshService {
           maxPull = 0;
         }, { passive: true });
         
-        // ENHANCED: Monitor for dynamic content changes (specifically for sheets)
+        // Enhanced content monitoring for sheets
         if (isSheetContext) {
-          // Track content changes to prevent pull-to-refresh during updates
           let contentObserver = new MutationObserver(function(mutations) {
             let hasSignificantChange = false;
             
             mutations.forEach(function(mutation) {
-              // Check for significant DOM changes
               if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                // Check if added nodes contain significant content
                 for (let node of mutation.addedNodes) {
                   if (node.nodeType === Node.ELEMENT_NODE && 
                       (node.textContent.length > 10 || node.querySelectorAll('*').length > 0)) {
@@ -775,12 +718,10 @@ class PullToRefreshService {
                 }
               }
               
-              // Check for text content changes in chat-like elements
               if (mutation.type === 'characterData' && mutation.target.textContent.length > 10) {
                 hasSignificantChange = true;
               }
               
-              // Check for attribute changes that might indicate content updates
               if (mutation.type === 'attributes' && 
                   (mutation.attributeName === 'class' || mutation.attributeName === 'style') &&
                   mutation.target.closest('.chat-container, .message-container, .content-container, [data-dynamic-content="true"]')) {
@@ -790,9 +731,7 @@ class PullToRefreshService {
             
             if (hasSignificantChange) {
               window.lastContentChangeTime = Date.now();
-              console.log('📝 Sheet: Dynamic content change detected at', new Date().toLocaleTimeString());
               
-              // If currently pulling, cancel it
               if (isPulling) {
                 console.log('🛑 Sheet: Cancelling pull due to content change');
                 isPulling = false;
@@ -802,7 +741,6 @@ class PullToRefreshService {
             }
           });
           
-          // Start observing for content changes
           contentObserver.observe(document.body, {
             childList: true,
             subtree: true,
@@ -810,51 +748,23 @@ class PullToRefreshService {
             attributes: true,
             attributeFilter: ['class', 'style']
           });
-          
-          // Also observe specific chat/content containers when they appear
-          function observeNewContainers() {
-            const containers = document.querySelectorAll('.chat-container, .message-container, .content-container, [class*="chat"], [class*="message"], [data-dynamic-content="true"]');
-            containers.forEach(function(container) {
-              if (!container.hasAttribute('data-observed')) {
-                container.setAttribute('data-observed', 'true');
-                container.setAttribute('data-dynamic-content', 'true');
-                
-                const containerObserver = new MutationObserver(function() {
-                  window.lastContentChangeTime = Date.now();
-                  console.log('📝 Sheet: Content change in container:', container.className || container.tagName);
-                });
-                
-                containerObserver.observe(container, {
-                  childList: true,
-                  subtree: true,
-                  characterData: true
-                });
-              }
-            });
-          }
-          
-          // Initial scan for containers
-          setTimeout(observeNewContainers, 1000);
-          
-          // Periodic scan for new containers
-          setInterval(observeNewContainers, 5000);
-          
-          console.log('👁️ Sheet: Enhanced content change monitoring started for dynamic content');
         }
         
-        console.log('✅ ' + contextName.toUpperCase() + ' ENHANCED pull-to-refresh ready with dynamic content support!');
-        console.log('🎨 Current theme from Flutter:', currentTheme);
-        console.log('📋 Sheet-specific ENHANCED mode:', isSheetContext ? 'ENABLED (scroll must be exactly 0px + no content changes)' : 'DISABLED');
+        console.log('✅ ' + contextName + ' TAB ' + tabIndex + ' pull-to-refresh ready!');
+        console.log('🎨 Theme from Flutter:', currentTheme);
+        console.log('📋 Context-specific mode:', contextName);
+        console.log('🔗 Channel name:', channelName);
         
       })();
       ''');
 
-      debugPrint('✅ ENHANCED pull-to-refresh injected for $contextName with dynamic content support');
+      debugPrint('✅ ENHANCED pull-to-refresh injected for $contextName (tab: $tabIndex)');
     } catch (e) {
       debugPrint('❌ Error injecting enhanced pull-to-refresh: $e');
     }
   }
 
+  // Keep existing helper methods unchanged...
   String _getContextName(RefreshContext context) {
     switch (context) {
       case RefreshContext.mainScreen:
@@ -880,11 +790,12 @@ class PullToRefreshService {
   Map<String, int> _getThresholds(RefreshContext context) {
     switch (context) {
       case RefreshContext.mainScreen:
-        return {'pullThreshold': 450, 'minPullSpeed': 150};
+        // MAIN SCREEN: More forgiving thresholds for better user experience
+        return {'pullThreshold': 400, 'minPullSpeed': 120};
       case RefreshContext.webViewPage:
         return {'pullThreshold': 450, 'minPullSpeed': 150};
       case RefreshContext.sheetWebView:
-        // ENHANCED: Increased thresholds for better control with dynamic content
+        // SHEET: Higher thresholds for better control with dynamic content
         return {'pullThreshold': 500, 'minPullSpeed': 200};
     }
   }

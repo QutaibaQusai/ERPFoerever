@@ -54,7 +54,6 @@ void main() async {
         ChangeNotifierProvider(create: (_) => themeService),
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider(create: (_) => RefreshStateManager()),
-        // NEW: Add splash state provider
         ChangeNotifierProvider(create: (_) => SplashStateManager()),
       ],
       child: MyApp(
@@ -65,7 +64,6 @@ void main() async {
   );
 }
 
-// NEW: Splash state manager to coordinate splash removal
 class SplashStateManager extends ChangeNotifier {
   bool _isWebViewReady = false;
   bool _isMinTimeElapsed = false;

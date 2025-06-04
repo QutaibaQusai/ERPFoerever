@@ -26,7 +26,7 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   late ConfigService _configService;
   late WebViewControllerManager _controllerManager;
@@ -39,7 +39,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   final Map<int, String> _refreshChannelNames = {};
   bool _hasNotifiedSplash = false;
   
-  // 🆕 NEW: Track preloading state
   bool _hasStartedPreloading = false;
 
   @override
@@ -49,7 +48,10 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _controllerManager = WebViewControllerManager();
 
     _initializeLoadingStates();
+      WidgetsBinding.instance.addObserver(this);
+
   }
+  
 
   void _initializeLoadingStates() {
     final config = _configService.config;
@@ -66,6 +68,51 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       debugPrint('✅ Initialized only index 0 for lazy loading during splash');
     }
   }
+  @override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  super.didChangeAppLifecycleState(state);
+  
+  if (state == AppLifecycleState.resumed) {
+    debugPrint('🔄 App resumed from background - fixing WebViews...');
+    _fixWebViewAfterBackground();
+  }
+}
+void _fixWebViewAfterBackground() async {
+  // Wait for app to fully resume
+  await Future.delayed(Duration(milliseconds: 800));
+  
+  if (!mounted) return;
+  
+  try {
+    final config = _configService.config;
+    if (config == null || _selectedIndex >= config.mainIcons.length) return;
+    
+    debugPrint('🔧 Fixing WebView for tab $_selectedIndex');
+    
+    // Get current tab info
+    final currentItem = config.mainIcons[_selectedIndex];
+    final controller = _controllerManager.getController(_selectedIndex, currentItem.link, context);
+    
+    // Force reload the WebView
+    setState(() {
+      _loadingStates[_selectedIndex] = true;
+    });
+    
+    await controller.loadRequest(Uri.parse(currentItem.link));
+    
+    debugPrint('✅ WebView fixed successfully');
+    
+  } catch (e) {
+    debugPrint('❌ Error fixing WebView: $e');
+    
+    // Fallback: try to reload
+    if (mounted) {
+      setState(() {
+        _loadingStates[_selectedIndex] = false;
+      });
+    }
+  }
+}
 
   void _notifyWebViewReady() {
     if (!_hasNotifiedSplash) {
@@ -1456,6 +1503,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+      WidgetsBinding.instance.removeObserver(this);
+
     // Clear WebViewService controller reference
     WebViewService().clearCurrentController();
 

@@ -1547,53 +1547,46 @@ Widget _buildWebView(int index, String url) {
           'MainScreenRefresh_${index}_${DateTime.now().millisecondsSinceEpoch}';
     }
   }
-
-  void _handleLoginConfigRequest(String loginUrl) async {
-    debugPrint('🔗 Login config request received: $loginUrl');
+void _handleLoginConfigRequest(String loginUrl) async {
+  debugPrint('🔗 Login config request received: $loginUrl');
+  
+  try {
+    final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
     
-    try {
-      final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
+    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+      final configUrl = parsedData['configUrl']!;
+      final userRole = parsedData['role'];
       
-      if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
-        final configUrl = parsedData['configUrl']!;
-        final userRole = parsedData['role'];
-        
-        debugPrint('✅ Processing config URL: $configUrl');
-        debugPrint('👤 User role: ${userRole ?? 'not specified'}');
-        
-        // No loading dialog - just process
-        await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
-        
-        // Use web scripts instead of native SnackBar
-        final controller = _controllerManager.getController(_selectedIndex, '', context);
-        controller.runJavaScript('''
-          const message = 'Configuration updated successfully!';
-          if (window.ToastManager) {
-            window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
-          } else {
-            window.location.href = 'toast://' + encodeURIComponent(message);
-          }
-        ''');
-        
-      } else {
-        debugPrint('❌ Failed to parse config URL');
-        
-        final controller = _controllerManager.getController(_selectedIndex, '', context);
-        controller.runJavaScript('''
-          const errorMessage = 'Invalid configuration URL';
-          if (window.AlertManager) {
-            window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
-          } else {
-            window.location.href = 'alert://' + encodeURIComponent(errorMessage);
-          }
-        ''');
+      debugPrint('✅ Processing config URL: $configUrl');
+      debugPrint('👤 User role: ${userRole ?? 'not specified'}');
+      
+      // 🆕 ENHANCED: Set dynamic config URL with context for better app data
+      await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
+      
+      // 🆕 NEW: Reload config immediately with current context for enhanced app data
+      if (mounted) {
+        debugPrint('🔄 Reloading configuration with MainScreen context...');
+        await ConfigService().loadConfig(context);
+        debugPrint('✅ Configuration reloaded with enhanced app data including user role');
       }
-    } catch (e) {
-      debugPrint('❌ Error handling login config request: $e');
+      
+      // Use web scripts for success feedback
+      final controller = _controllerManager.getController(_selectedIndex, '', context);
+      controller.runJavaScript('''
+        const message = 'Configuration updated successfully with user role: ${userRole ?? 'default'}!';
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent(message);
+        }
+      ''');
+      
+    } else {
+      debugPrint('❌ Failed to parse config URL');
       
       final controller = _controllerManager.getController(_selectedIndex, '', context);
       controller.runJavaScript('''
-        const errorMessage = 'Error updating configuration: ${e.toString()}';
+        const errorMessage = 'Invalid configuration URL';
         if (window.AlertManager) {
           window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
         } else {
@@ -1601,8 +1594,20 @@ Widget _buildWebView(int index, String url) {
         }
       ''');
     }
+  } catch (e) {
+    debugPrint('❌ Error handling login config request: $e');
+    
+    final controller = _controllerManager.getController(_selectedIndex, '', context);
+    controller.runJavaScript('''
+      const errorMessage = 'Error updating configuration: ${e.toString()}';
+      if (window.AlertManager) {
+        window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+      } else {
+        window.location.href = 'alert://' + encodeURIComponent(errorMessage);
+      }
+    ''');
   }
-
+}
   @override
   void dispose() {
       WidgetsBinding.instance.removeObserver(this);

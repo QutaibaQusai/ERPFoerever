@@ -25,18 +25,17 @@ class WebViewService {
   factory WebViewService() => _instance;
   WebViewService._internal();
 
-
   final List<Map<String, dynamic>> _controllerStack = [];
 
-BuildContext? get _currentContext {
-  if (_controllerStack.isEmpty) return null;
-  return _controllerStack.last['context'] as BuildContext?;
-}
+  BuildContext? get _currentContext {
+    if (_controllerStack.isEmpty) return null;
+    return _controllerStack.last['context'] as BuildContext?;
+  }
 
-WebViewController? get _currentController {
-  if (_controllerStack.isEmpty) return null;
-  return _controllerStack.last['controller'] as WebViewController?;
-}
+  WebViewController? get _currentController {
+    if (_controllerStack.isEmpty) return null;
+    return _controllerStack.last['controller'] as WebViewController?;
+  }
 
   void navigate(
     BuildContext context, {
@@ -77,99 +76,100 @@ WebViewController? get _currentController {
       builder: (context) => WebViewSheet(url: url, title: title),
     );
   }
-WebViewController createController(String url, [BuildContext? context]) {
-  debugPrint('🌐 Creating WebView controller for: $url');
 
-  final controller = WebViewController();
+  WebViewController createController(String url, [BuildContext? context]) {
+    debugPrint('🌐 Creating WebView controller for: $url');
 
-  // Configure the controller
-  controller
-    ..setJavaScriptMode(JavaScriptMode.unrestricted)
-    ..setBackgroundColor(const Color(0x00000000))
-    ..enableZoom(false)
-    ..setUserAgent('ERPForever-Flutter-App/1.0')
-    
-    // ADD: All your existing JavaScript channels (keep these as they are)
-    ..addJavaScriptChannel(
-      'BarcodeScanner',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('📸 Barcode message: ${message.message}');
-        _handleBarcodeRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'ThemeManager',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('🎨 Theme message: ${message.message}');
-        _handleThemeChange(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'AuthManager',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('🚪 Auth message: ${message.message}');
-        _handleAuthRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'LocationManager',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('🌍 Location message: ${message.message}');
-        _handleLocationRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'ContactsManager',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('📞 Contacts message: ${message.message}');
-        _handleContactsRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'ScreenshotManager',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('📸 Screenshot message: ${message.message}');
-        _handleScreenshotRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'ImageSaver',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('🖼️ Image saver message: ${message.message}');
-        _handleImageSaveRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'PdfSaver',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('📄 PDF saver message: ${message.message}');
-        _handlePdfSaveRequest(message.message);
-      },
-    )
-    ..addJavaScriptChannel(
-      'AlertManager',
-      onMessageReceived: (JavaScriptMessage message) {
-        debugPrint('🚨 Alert message: ${message.message}');
-        _handleAlertRequest(message.message);
-      },
-    )..addJavaScriptChannel(
-  'ToastManager',
-  onMessageReceived: (JavaScriptMessage message) {
-    debugPrint('🍞 Toast message: ${message.message}');
-    _handleToastRequest(message.message);
-  },
-)
-  ..setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          debugPrint('⏳ Page started loading: $url');
+    final controller = WebViewController();
+
+    // Configure the controller
+    controller
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0x00000000))
+      ..enableZoom(false)
+      ..setUserAgent('ERPForever-Flutter-App/1.0')
+      // ADD: All your existing JavaScript channels (keep these as they are)
+      ..addJavaScriptChannel(
+        'BarcodeScanner',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📸 Barcode message: ${message.message}');
+          _handleBarcodeRequest(message.message);
         },
-        onPageFinished: (String url) {
-          debugPrint('✅ Page finished loading: $url');
-          _injectJavaScript(controller);
+      )
+      ..addJavaScriptChannel(
+        'ThemeManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🎨 Theme message: ${message.message}');
+          _handleThemeChange(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'AuthManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🚪 Auth message: ${message.message}');
+          _handleAuthRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'LocationManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🌍 Location message: ${message.message}');
+          _handleLocationRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'ContactsManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📞 Contacts message: ${message.message}');
+          _handleContactsRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'ScreenshotManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📸 Screenshot message: ${message.message}');
+          _handleScreenshotRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'ImageSaver',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🖼️ Image saver message: ${message.message}');
+          _handleImageSaveRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'PdfSaver',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('📄 PDF saver message: ${message.message}');
+          _handlePdfSaveRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'AlertManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🚨 Alert message: ${message.message}');
+          _handleAlertRequest(message.message);
+        },
+      )
+      ..addJavaScriptChannel(
+        'ToastManager',
+        onMessageReceived: (JavaScriptMessage message) {
+          debugPrint('🍞 Toast message: ${message.message}');
+          _handleToastRequest(message.message);
+        },
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            debugPrint('⏳ Page started loading: $url');
+          },
+          onPageFinished: (String url) {
+            debugPrint('✅ Page finished loading: $url');
+            _injectJavaScript(controller);
 
-          // Make WebView content screenshot-ready
-          controller.runJavaScript('''
+            // Make WebView content screenshot-ready
+            controller.runJavaScript('''
             document.body.style.webkitBackfaceVisibility = 'hidden';
             document.body.style.webkitPerspective = '1000px';
             document.body.style.webkitTransform = 'translate3d(0,0,0)';
@@ -180,48 +180,49 @@ WebViewController createController(String url, [BuildContext? context]) {
             
             console.log("✅ WebView optimized for screenshots");
           ''');
-        },
-        onNavigationRequest: (NavigationRequest request) {
-          debugPrint('🔄 Navigation request: ${request.url}');
-          return _handleNavigationRequest(request);
-        },
-        onWebResourceError: (WebResourceError error) {
-          debugPrint('❌ Web resource error: ${error.description}');
-        },
-      ),
-    )
-    ..setUserAgent('ERPForever-Flutter-App');
+          },
+          onNavigationRequest: (NavigationRequest request) {
+            debugPrint('🔄 Navigation request: ${request.url}');
+            return _handleNavigationRequest(request);
+          },
+          onWebResourceError: (WebResourceError error) {
+            debugPrint('❌ Web resource error: ${error.description}');
+          },
+        ),
+      )
+      ..setUserAgent('ERPForever-Flutter-App');
 
-  // NEW: Load URL with app data
-  _loadUrlWithAppData(controller, url, context);
+    // NEW: Load URL with app data
+    _loadUrlWithAppData(controller, url, context);
 
-  return controller;
-}
-void _handleToastRequest(String message) {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for toast request');
-    return;
+    return controller;
   }
 
-  if (!_currentContext!.mounted) {
-    debugPrint('❌ Context is no longer mounted for toast request');
-    return;
-  }
-
-  debugPrint('🍞 Processing toast request: $message');
-
-  try {
-    // Extract toast message from URL
-    String toastMessage = _extractToastMessage(message);
-    
-    if (toastMessage.isEmpty) {
-      debugPrint('❌ Empty toast message');
+  void _handleToastRequest(String message) {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for toast request');
       return;
     }
 
-    // ✅ PURE WEB SCRIPT APPROACH - No native Flutter UI
-    if (_currentController != null) {
-      _currentController!.runJavaScript('''
+    if (!_currentContext!.mounted) {
+      debugPrint('❌ Context is no longer mounted for toast request');
+      return;
+    }
+
+    debugPrint('🍞 Processing toast request: $message');
+
+    try {
+      // Extract toast message from URL
+      String toastMessage = _extractToastMessage(message);
+
+      if (toastMessage.isEmpty) {
+        debugPrint('❌ Empty toast message');
+        return;
+      }
+
+      // ✅ PURE WEB SCRIPT APPROACH - No native Flutter UI
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
         try {
           console.log('🍞 Toast message received in WebView: $toastMessage');
           
@@ -307,184 +308,205 @@ void _handleToastRequest(String message) {
           console.error('❌ Error handling toast in WebView:', error);
         }
       ''');
-    }
-
-    debugPrint('✅ Toast processed via web scripts: $toastMessage');
-  } catch (e) {
-    debugPrint('❌ Error handling toast request: $e');
-  }
-}
-String _extractToastMessage(String url) {
-  try {
-    // Remove protocol
-    String cleanUrl = url.replaceAll('toast://', '');
-    
-    // URL decode
-    return Uri.decodeComponent(cleanUrl);
-  } catch (e) {
-    debugPrint('❌ Error extracting toast message: $e');
-    return '';
-  }
-}
-
-
-Future<void> _loadUrlWithAppData(WebViewController controller, String originalUrl, [BuildContext? context]) async {
-  try {
-    debugPrint('📊 Collecting enhanced app data with language and theme...');
-    
-    // Collect app data with context for better theme detection
-    final appData = await AppDataService().collectDataForServer(context);
-    
-    // Build enhanced URL with app data
-    final enhancedUrl = _buildEnhancedUrl(originalUrl, appData);
-    
-    // Build custom headers with app data
-    final headers = _buildAppDataHeaders(appData, context);
-    
-    // Load the enhanced URL with custom headers
-    await controller.loadRequest(
-      Uri.parse(enhancedUrl),
-      headers: headers,
-    );
-    
-    debugPrint('✅ Loaded URL with enhanced app data including language and theme');
-    debugPrint('🌍 Language: ${appData['current_language']}, Theme: ${appData['current_theme_mode']}');
-    
-  } catch (e) {
-    debugPrint('❌ Error loading URL with enhanced app data: $e');
-    // Fallback to original URL
-    controller.loadRequest(Uri.parse(originalUrl));
-  }
-}
-
-String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
-  try {
-    final uri = Uri.parse(baseUrl);
-    final originalParams = Map<String, String>.from(uri.queryParameters);
-    
-    debugPrint('📋 Original parameters found: ${originalParams.keys.toList()}');
-    
-    // ✅ SOLUTION: Use alternative parameter names to avoid conflicts
-    final alternativeAppData = {
-      // Use 'flutter_' prefix to avoid conflicts with original parameters
-      'flutter_app_source': 'flutter_app',
-      'flutter_app_version': appData['app_version'] ?? 'unknown',
-      'flutter_platform': appData['platform'] ?? 'unknown',
-      'flutter_device_model': appData['device_model'] ?? 'unknown',
-      'flutter_language': appData['current_language'] ?? 'en',
-      'flutter_theme': appData['current_theme_mode'] ?? 'system',
-      'flutter_direction': appData['text_direction'] ?? 'LTR',
-      'flutter_notification_id': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
-      'flutter_timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-      
-      // Alternative method: Use 'app_data' as a single encoded parameter
-      'app_data': _encodeAppDataToString(appData),
-    };
-
-    // Combine original parameters with alternative app data
-    final combinedParams = <String, String>{};
-    
-    // ✅ FIRST: Add original parameters (PRESERVED)
-    combinedParams.addAll(originalParams);
-    
-    // ✅ SECOND: Add app data using alternative names (NO CONFLICTS)
-    for (final entry in alternativeAppData.entries) {
-      // Only add if not already exists in original parameters
-      if (!combinedParams.containsKey(entry.key)) {
-        combinedParams[entry.key] = entry.value;
-      } else {
-        debugPrint('⚠️ Skipping ${entry.key} - already exists in original parameters');
       }
+
+      debugPrint('✅ Toast processed via web scripts: $toastMessage');
+    } catch (e) {
+      debugPrint('❌ Error handling toast request: $e');
+    }
+  }
+
+  String _extractToastMessage(String url) {
+    try {
+      // Remove protocol
+      String cleanUrl = url.replaceAll('toast://', '');
+
+      // URL decode
+      return Uri.decodeComponent(cleanUrl);
+    } catch (e) {
+      debugPrint('❌ Error extracting toast message: $e');
+      return '';
+    }
+  }
+
+  Future<void> _loadUrlWithAppData(
+    WebViewController controller,
+    String originalUrl, [
+    BuildContext? context,
+  ]) async {
+    try {
+      debugPrint('📊 Collecting enhanced app data with language and theme...');
+
+      // Collect app data with context for better theme detection
+      final appData = await AppDataService().collectDataForServer(context);
+
+      // Build enhanced URL with app data
+      final enhancedUrl = _buildEnhancedUrl(originalUrl, appData);
+
+      // Build custom headers with app data
+      final headers = _buildAppDataHeaders(appData, context);
+
+      // Load the enhanced URL with custom headers
+      await controller.loadRequest(Uri.parse(enhancedUrl), headers: headers);
+
+      debugPrint(
+        '✅ Loaded URL with enhanced app data including language and theme',
+      );
+      debugPrint(
+        '🌍 Language: ${appData['current_language']}, Theme: ${appData['current_theme_mode']}',
+      );
+    } catch (e) {
+      debugPrint('❌ Error loading URL with enhanced app data: $e');
+      // Fallback to original URL
+      controller.loadRequest(Uri.parse(originalUrl));
+    }
+  }
+
+  String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
+    try {
+      final uri = Uri.parse(baseUrl);
+      final originalParams = Map<String, String>.from(uri.queryParameters);
+
+      debugPrint(
+        '📋 Original parameters found: ${originalParams.keys.toList()}',
+      );
+
+      // ✅ SOLUTION: Use alternative parameter names to avoid conflicts
+      final alternativeAppData = {
+        // Use 'flutter_' prefix to avoid conflicts with original parameters
+        'flutter_app_source': 'flutter_app',
+        'flutter_app_version': appData['app_version'] ?? 'unknown',
+        'flutter_platform': appData['platform'] ?? 'unknown',
+        'flutter_device_model': appData['device_model'] ?? 'unknown',
+        'flutter_language': appData['current_language'] ?? 'en',
+        'flutter_theme': appData['current_theme_mode'] ?? 'system',
+        'flutter_direction': appData['text_direction'] ?? 'LTR',
+        'flutter_notification_id':
+            appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
+        'flutter_timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+
+        // Alternative method: Use 'app_data' as a single encoded parameter
+        'app_data': _encodeAppDataToString(appData),
+      };
+
+      // Combine original parameters with alternative app data
+      final combinedParams = <String, String>{};
+
+      // ✅ FIRST: Add original parameters (PRESERVED)
+      combinedParams.addAll(originalParams);
+
+      // ✅ SECOND: Add app data using alternative names (NO CONFLICTS)
+      for (final entry in alternativeAppData.entries) {
+        // Only add if not already exists in original parameters
+        if (!combinedParams.containsKey(entry.key)) {
+          combinedParams[entry.key] = entry.value;
+        } else {
+          debugPrint(
+            '⚠️ Skipping ${entry.key} - already exists in original parameters',
+          );
+        }
+      }
+
+      final newUri = uri.replace(queryParameters: combinedParams);
+
+      debugPrint(
+        '✅ URL enhanced: Original params preserved + Alternative app data added',
+      );
+      debugPrint('📊 Total parameters: ${combinedParams.length}');
+      debugPrint(
+        '📋 Original count: ${originalParams.length}, Added: ${combinedParams.length - originalParams.length}',
+      );
+
+      return newUri.toString();
+    } catch (e) {
+      debugPrint('❌ Error building enhanced URL alternative: $e');
+      return baseUrl;
+    }
+  }
+
+  String _encodeAppDataToString(Map<String, String> appData) {
+    try {
+      // Create a compact representation of app data
+      final compactData = {
+        'v': appData['app_version'] ?? 'unknown',
+        'p': appData['platform'] ?? 'unknown',
+        'l': appData['current_language'] ?? 'en',
+        't': appData['current_theme_mode'] ?? 'system',
+        'd': appData['text_direction'] ?? 'LTR',
+        'n': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
+        'ts': DateTime.now().millisecondsSinceEpoch.toString(),
+      };
+
+      // Convert to JSON and encode
+      final jsonString = jsonEncode(compactData);
+      final encodedData = base64Encode(utf8.encode(jsonString));
+
+      return encodedData;
+    } catch (e) {
+      debugPrint('❌ Error encoding app data: $e');
+      return '';
+    }
+  }
+
+  // ADD this new method to your WebViewService class:
+  Map<String, String> _buildAppDataHeaders(
+    Map<String, String> appData, [
+    BuildContext? context,
+  ]) {
+    final headers = <String, String>{
+      'User-Agent': 'ERPForever-Flutter-App/1.0',
+
+      // 🔧 FIXED: Use consistent header naming
+      'X-Flutter-App-Source': 'flutter_mobile',
+      'X-Flutter-Client-Version': appData['app_version'] ?? 'unknown',
+      'X-Flutter-Platform': appData['platform'] ?? 'unknown',
+      'X-Flutter-Device-Model': appData['device_model'] ?? 'unknown',
+      'X-Flutter-Timestamp': DateTime.now().toIso8601String(),
+
+      // Language and theme headers
+      'X-Flutter-Language': appData['current_language'] ?? 'en',
+      'X-Flutter-Theme': appData['current_theme_mode'] ?? 'system',
+      'X-Flutter-Direction': appData['text_direction'] ?? 'LTR',
+      'X-Flutter-Theme-Setting': appData['theme_setting'] ?? 'system',
+
+      // Notification ID header
+      'X-Flutter-Notification-ID':
+          appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
+    };
+
+    // Add device-specific data
+    if (appData['device_brand'] != null) {
+      headers['X-Flutter-Device-Brand'] = appData['device_brand']!;
+    }
+    if (appData['build_number'] != null) {
+      headers['X-Flutter-Build-Number'] = appData['build_number']!;
+    }
+    if (appData['timezone'] != null) {
+      headers['X-Flutter-Timezone'] = appData['timezone']!;
     }
 
-    final newUri = uri.replace(queryParameters: combinedParams);
-    
-    debugPrint('✅ URL enhanced: Original params preserved + Alternative app data added');
-    debugPrint('📊 Total parameters: ${combinedParams.length}');
-    debugPrint('📋 Original count: ${originalParams.length}, Added: ${combinedParams.length - originalParams.length}');
-    
-    return newUri.toString();
-    
-  } catch (e) {
-    debugPrint('❌ Error building enhanced URL alternative: $e');
-    return baseUrl;
-  }
-}
-String _encodeAppDataToString(Map<String, String> appData) {
-  try {
-    // Create a compact representation of app data
-    final compactData = {
-      'v': appData['app_version'] ?? 'unknown',
-      'p': appData['platform'] ?? 'unknown',
-      'l': appData['current_language'] ?? 'en',
-      't': appData['current_theme_mode'] ?? 'system',
-      'd': appData['text_direction'] ?? 'LTR',
-      'n': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
-      'ts': DateTime.now().millisecondsSinceEpoch.toString(),
-    };
-    
-    // Convert to JSON and encode
-    final jsonString = jsonEncode(compactData);
-    final encodedData = base64Encode(utf8.encode(jsonString));
-    
-    return encodedData;
-  } catch (e) {
-    debugPrint('❌ Error encoding app data: $e');
-    return '';
-  }
-}
-// ADD this new method to your WebViewService class:
-Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildContext? context]) {
-  final headers = <String, String>{
-    'User-Agent': 'ERPForever-Flutter-App/1.0',
-    
-    // 🔧 FIXED: Use consistent header naming
-    'X-Flutter-App-Source': 'flutter_mobile',
-    'X-Flutter-Client-Version': appData['app_version'] ?? 'unknown',
-    'X-Flutter-Platform': appData['platform'] ?? 'unknown',
-    'X-Flutter-Device-Model': appData['device_model'] ?? 'unknown',
-    'X-Flutter-Timestamp': DateTime.now().toIso8601String(),
-    
-    // Language and theme headers
-    'X-Flutter-Language': appData['current_language'] ?? 'en',
-    'X-Flutter-Theme': appData['current_theme_mode'] ?? 'system',
-    'X-Flutter-Direction': appData['text_direction'] ?? 'LTR',
-    'X-Flutter-Theme-Setting': appData['theme_setting'] ?? 'system',
-    
-    // Notification ID header
-    'X-Flutter-Notification-ID': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
-  };
-
-  // Add device-specific data
-  if (appData['device_brand'] != null) {
-    headers['X-Flutter-Device-Brand'] = appData['device_brand']!;
-  }
-  if (appData['build_number'] != null) {
-    headers['X-Flutter-Build-Number'] = appData['build_number']!;
-  }
-  if (appData['timezone'] != null) {
-    headers['X-Flutter-Timezone'] = appData['timezone']!;
+    debugPrint(
+      '📋 Headers created with Flutter-specific naming to avoid conflicts',
+    );
+    return headers;
   }
 
-  debugPrint('📋 Headers created with Flutter-specific naming to avoid conflicts');
-  return headers;
-}
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation request: ${request.url}');
-// NEW: Handle loggedin:// protocol for config updates
-  if (request.url.startsWith('loggedin://')) {
-    _handleLoginConfigRequest(request.url);
-    return NavigationDecision.prevent;
-  }
-  if (request.url.startsWith('toast://')) {
-  _handleToastRequest(request.url);
-  return NavigationDecision.prevent;
-}
-  // Handle theme requests
-  if (request.url.startsWith('dark-mode://')) {
-    _handleThemeChange('dark');
-    return NavigationDecision.prevent;
-  } 
+    // NEW: Handle loggedin:// protocol for config updates
+    if (request.url.startsWith('loggedin://')) {
+      _handleLoginConfigRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+    if (request.url.startsWith('toast://')) {
+      _handleToastRequest(request.url);
+      return NavigationDecision.prevent;
+    }
+    // Handle theme requests
+    if (request.url.startsWith('dark-mode://')) {
+      _handleThemeChange('dark');
+      return NavigationDecision.prevent;
+    }
     // Handle theme requests
     if (request.url.startsWith('dark-mode://')) {
       _handleThemeChange('dark');
@@ -545,90 +567,92 @@ Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildCont
     return NavigationDecision.navigate;
   }
 
- void _handleAlertRequest(String message) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for alert request');
-    return;
-  }
-
-  // ADD THIS CONTEXT VALIDATION
-  if (!_currentContext!.mounted) {
-    debugPrint('❌ Context is no longer mounted for alert request');
-    return;
-  }
-
-  debugPrint('🚨 Processing alert request: $message');
-
-  try {
-    Map<String, dynamic> result;
-    String alertType = AlertService().getAlertType(message);
-
-    switch (alertType) {
-      case 'alert':
-        result = await AlertService().showAlertFromUrl(
-          message,
-          _currentContext!,
-        );
-        break;
-      case 'confirm':
-        result = await AlertService().showConfirmFromUrl(
-          message,
-          _currentContext!,
-        );
-        break;
-      case 'prompt':
-        result = await AlertService().showPromptFromUrl(
-          message,
-          _currentContext!,
-        );
-        break;
-      default:
-        result = await AlertService().showAlertFromUrl(
-          message,
-          _currentContext!,
-        );
-        break;
+  void _handleAlertRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for alert request');
+      return;
     }
 
-    // Send result back to WebView
-    _sendAlertResultToWebView(result, alertType);
-  } catch (e) {
-    debugPrint('❌ Error handling alert request: $e');
+    // ADD THIS CONTEXT VALIDATION
+    if (!_currentContext!.mounted) {
+      debugPrint('❌ Context is no longer mounted for alert request');
+      return;
+    }
 
-    _sendAlertResultToWebView({
-      'success': false,
-      'error': 'Failed to handle alert: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-    }, 'alert');
+    debugPrint('🚨 Processing alert request: $message');
+
+    try {
+      Map<String, dynamic> result;
+      String alertType = AlertService().getAlertType(message);
+
+      switch (alertType) {
+        case 'alert':
+          result = await AlertService().showAlertFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+        case 'confirm':
+          result = await AlertService().showConfirmFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+        case 'prompt':
+          result = await AlertService().showPromptFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+        default:
+          result = await AlertService().showAlertFromUrl(
+            message,
+            _currentContext!,
+          );
+          break;
+      }
+
+      // Send result back to WebView
+      _sendAlertResultToWebView(result, alertType);
+    } catch (e) {
+      debugPrint('❌ Error handling alert request: $e');
+
+      _sendAlertResultToWebView({
+        'success': false,
+        'error': 'Failed to handle alert: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+      }, 'alert');
+    }
   }
-}
 
+  void _sendAlertResultToWebView(
+    Map<String, dynamic> result,
+    String alertType,
+  ) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for alert result');
+      return;
+    }
 
-void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
-  if (_currentController == null) {
-    debugPrint('❌ No WebView controller available for alert result');
-    return;
-  }
+    if (!isControllerValid()) {
+      debugPrint('❌ WebView controller is no longer valid');
+      return;
+    }
 
-  if (!isControllerValid()) {
-    debugPrint('❌ WebView controller is no longer valid');
-    return;
-  }
+    debugPrint('📱 Sending alert result to WebView: $alertType');
 
-  debugPrint('📱 Sending alert result to WebView: $alertType');
+    // Rest of the method stays the same...
+    final success = result['success'] ?? false;
+    final error = (result['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = result['errorCode'] ?? '';
+    final message = (result['message'] ?? '').replaceAll('"', '\\"');
+    final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
+    final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
+    final confirmed = result['confirmed'] ?? false;
+    final cancelled = result['cancelled'] ?? false;
+    final dismissed = result['dismissed'] ?? false;
 
-  // Rest of the method stays the same...
-  final success = result['success'] ?? false;
-  final error = (result['error'] ?? '').replaceAll('"', '\\"');
-  final errorCode = result['errorCode'] ?? '';
-  final message = (result['message'] ?? '').replaceAll('"', '\\"');
-  final userResponse = (result['userResponse'] ?? '').replaceAll('"', '\\"');
-  final userInput = (result['userInput'] ?? '').replaceAll('"', '\\"');
-  final confirmed = result['confirmed'] ?? false;
-  final cancelled = result['cancelled'] ?? false;
-  final dismissed = result['dismissed'] ?? false;
-
-  _currentController!.runJavaScript('''
+    _currentController!.runJavaScript('''
     try {
       console.log("🚨 Alert result received: Type=$alertType, Success=$success");
       
@@ -686,44 +710,46 @@ void _sendAlertResultToWebView(Map<String, dynamic> result, String alertType) {
       console.error("❌ Error handling alert result:", error);
     }
   ''');
-}
-
-void _handlePdfSaveRequest(String message) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for PDF save request');
-    return;
   }
 
-  debugPrint('📄 Processing PDF save request silently...');
+  void _handlePdfSaveRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for PDF save request');
+      return;
+    }
 
-  String pdfUrl = PdfSaverService().extractPdfUrl(message);
+    debugPrint('📄 Processing PDF save request silently...');
 
-  if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
-    _sendPdfSaveToWebView({
-      'success': false,
-      'error': 'Invalid PDF URL',
-      'errorCode': 'INVALID_URL',
-      'url': pdfUrl,
-    });
-    return;
+    String pdfUrl = PdfSaverService().extractPdfUrl(message);
+
+    if (!PdfSaverService().isValidPdfUrl(pdfUrl)) {
+      _sendPdfSaveToWebView({
+        'success': false,
+        'error': 'Invalid PDF URL',
+        'errorCode': 'INVALID_URL',
+        'url': pdfUrl,
+      });
+      return;
+    }
+
+    // NO LOADING DIALOG - just process silently
+    debugPrint('⬇️ Starting PDF download silently...');
+
+    try {
+      Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(
+        message,
+      );
+      _sendPdfSaveToWebView(result);
+    } catch (e) {
+      debugPrint('❌ Error handling PDF save request: $e');
+      _sendPdfSaveToWebView({
+        'success': false,
+        'error': 'Failed to save PDF: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+        'url': pdfUrl,
+      });
+    }
   }
-
-  // NO LOADING DIALOG - just process silently
-  debugPrint('⬇️ Starting PDF download silently...');
-
-  try {
-    Map<String, dynamic> result = await PdfSaverService().savePdfFromUrl(message);
-    _sendPdfSaveToWebView(result);
-  } catch (e) {
-    debugPrint('❌ Error handling PDF save request: $e');
-    _sendPdfSaveToWebView({
-      'success': false,
-      'error': 'Failed to save PDF: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-      'url': pdfUrl,
-    });
-  }
-}
 
   void _showPdfSaveLoadingDialog(String pdfUrl) {
     if (_currentContext == null) return;
@@ -803,7 +829,8 @@ void _handlePdfSaveRequest(String message) async {
       },
     );
   }
-void _sendPdfSaveToWebView(Map<String, dynamic> result) {
+
+  void _sendPdfSaveToWebView(Map<String, dynamic> result) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for PDF save result');
       return;
@@ -879,43 +906,47 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
   ''');
 
     // REMOVED: All SnackBar code - now using protocols instead
-  } /// Handle image save requests
- void _handleImageSaveRequest(String message) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for image save request');
-    return;
   }
 
-  debugPrint('🖼️ Processing image save request silently...');
+  /// Handle image save requests
+  void _handleImageSaveRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for image save request');
+      return;
+    }
 
-  String imageUrl = ImageSaverService().extractImageUrl(message);
+    debugPrint('🖼️ Processing image save request silently...');
 
-  if (!ImageSaverService().isValidImageUrl(imageUrl)) {
-    _sendImageSaveToWebView({
-      'success': false,
-      'error': 'Invalid image URL',
-      'errorCode': 'INVALID_URL',
-      'url': imageUrl,
-    });
-    return;
+    String imageUrl = ImageSaverService().extractImageUrl(message);
+
+    if (!ImageSaverService().isValidImageUrl(imageUrl)) {
+      _sendImageSaveToWebView({
+        'success': false,
+        'error': 'Invalid image URL',
+        'errorCode': 'INVALID_URL',
+        'url': imageUrl,
+      });
+      return;
+    }
+
+    // NO LOADING DIALOG - just process silently
+    debugPrint('⬇️ Starting image download silently...');
+
+    try {
+      Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(
+        message,
+      );
+      _sendImageSaveToWebView(result);
+    } catch (e) {
+      debugPrint('❌ Error handling image save request: $e');
+      _sendImageSaveToWebView({
+        'success': false,
+        'error': 'Failed to save image: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+        'url': imageUrl,
+      });
+    }
   }
-
-  // NO LOADING DIALOG - just process silently
-  debugPrint('⬇️ Starting image download silently...');
-
-  try {
-    Map<String, dynamic> result = await ImageSaverService().saveImageFromUrl(message);
-    _sendImageSaveToWebView(result);
-  } catch (e) {
-    debugPrint('❌ Error handling image save request: $e');
-    _sendImageSaveToWebView({
-      'success': false,
-      'error': 'Failed to save image: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-      'url': imageUrl,
-    });
-  }
-}
 
   void _showImageSaveLoadingDialog(String imageUrl) {
     if (_currentContext == null) return;
@@ -949,7 +980,8 @@ void _sendPdfSaveToWebView(Map<String, dynamic> result) {
       },
     );
   }
-void _sendImageSaveToWebView(Map<String, dynamic> result) {
+
+  void _sendImageSaveToWebView(Map<String, dynamic> result) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for image save result');
       return;
@@ -1021,34 +1053,36 @@ void _sendImageSaveToWebView(Map<String, dynamic> result) {
 
     // REMOVED: All SnackBar code - now using protocols instead
   }
-void _handleScreenshotRequest(String message) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for screenshot request');
-    return;
+
+  void _handleScreenshotRequest(String message) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for screenshot request');
+      return;
+    }
+
+    debugPrint('📸 Processing screenshot request silently...');
+
+    // NO LOADING DIALOG - just process silently
+    await Future.delayed(Duration(milliseconds: 500)); // Small delay for UI
+
+    try {
+      Map<String, dynamic> screenshotResult = await ScreenshotService()
+          .takeScreenshotWithOptions(
+            saveToGallery: true,
+            delay: Duration(milliseconds: 200),
+          );
+
+      _sendScreenshotToWebView(screenshotResult);
+    } catch (e) {
+      debugPrint('❌ Error taking screenshot: $e');
+      _sendScreenshotToWebView({
+        'success': false,
+        'error': 'Failed to take screenshot: ${e.toString()}',
+        'errorCode': 'CAPTURE_FAILED',
+      });
+    }
   }
 
-  debugPrint('📸 Processing screenshot request silently...');
-
-  // NO LOADING DIALOG - just process silently
-  await Future.delayed(Duration(milliseconds: 500)); // Small delay for UI
-
-  try {
-    Map<String, dynamic> screenshotResult = await ScreenshotService()
-        .takeScreenshotWithOptions(
-          saveToGallery: true,
-          delay: Duration(milliseconds: 200),
-        );
-
-    _sendScreenshotToWebView(screenshotResult);
-  } catch (e) {
-    debugPrint('❌ Error taking screenshot: $e');
-    _sendScreenshotToWebView({
-      'success': false,
-      'error': 'Failed to take screenshot: ${e.toString()}',
-      'errorCode': 'CAPTURE_FAILED',
-    });
-  }
-}
   void _showScreenshotLoadingDialog() {
     if (_currentContext == null) return;
 
@@ -1073,7 +1107,8 @@ void _handleScreenshotRequest(String message) async {
       },
     );
   }
-void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
+
+  void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
     if (_currentController == null) {
       debugPrint('❌ No WebView controller available for screenshot result');
       return;
@@ -1149,28 +1184,30 @@ void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
 
     // REMOVED: All SnackBar code - now using protocols instead
   }
- void _handleContactsRequest(String message) async {
-  if (_currentContext == null || _currentController == null) {
-    debugPrint('❌ No context or controller available for contacts request');
-    return;
-  }
 
-  debugPrint('📞 Processing contacts request silently...');
+  void _handleContactsRequest(String message) async {
+    if (_currentContext == null || _currentController == null) {
+      debugPrint('❌ No context or controller available for contacts request');
+      return;
+    }
 
-  try {
-    // NO LOADING DIALOG - just process silently
-    Map<String, dynamic> contactsResult = await AppContactsService().getAllContacts();
-    _sendContactsToWebView(contactsResult);
-  } catch (e) {
-    debugPrint('❌ Error handling contacts request: $e');
-    _sendContactsToWebView({
-      'success': false,
-      'error': 'Failed to get contacts: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-      'contacts': [],
-    });
+    debugPrint('📞 Processing contacts request silently...');
+
+    try {
+      // NO LOADING DIALOG - just process silently
+      Map<String, dynamic> contactsResult =
+          await AppContactsService().getAllContacts();
+      _sendContactsToWebView(contactsResult);
+    } catch (e) {
+      debugPrint('❌ Error handling contacts request: $e');
+      _sendContactsToWebView({
+        'success': false,
+        'error': 'Failed to get contacts: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+        'contacts': [],
+      });
+    }
   }
-}
 
   void _showContactsLoadingDialog() {
     if (_currentContext == null) return;
@@ -1196,32 +1233,35 @@ void _sendScreenshotToWebView(Map<String, dynamic> screenshotData) {
       },
     );
   }
-void _sendContactsToWebView(Map<String, dynamic> contactsData) {
-  if (_currentController == null) {
-    debugPrint('❌ No WebView controller available for contacts result');
-    return;
-  }
 
-  debugPrint('📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts');
-
-  final success = contactsData['success'] ?? false;
-  final totalCount = contactsData['totalCount'] ?? 0;
-
-  // Convert contacts to proper JSON string
-  String contactsJson = '[]';
-  if (contactsData['contacts'] != null && success) {
-    try {
-      final contacts = contactsData['contacts'] as List;
-      final jsonString = jsonEncode(contacts);
-      contactsJson = jsonString;
-      debugPrint('✅ Contacts JSON prepared: ${contacts.length} contacts');
-    } catch (e) {
-      debugPrint('❌ Error converting contacts to JSON: $e');
-      contactsJson = '[]';
+  void _sendContactsToWebView(Map<String, dynamic> contactsData) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for contacts result');
+      return;
     }
-  }
 
-  _currentController!.runJavaScript('''
+    debugPrint(
+      '📱 Sending contacts data to WebView: ${contactsData['totalCount'] ?? 0} contacts',
+    );
+
+    final success = contactsData['success'] ?? false;
+    final totalCount = contactsData['totalCount'] ?? 0;
+
+    // Convert contacts to proper JSON string
+    String contactsJson = '[]';
+    if (contactsData['contacts'] != null && success) {
+      try {
+        final contacts = contactsData['contacts'] as List;
+        final jsonString = jsonEncode(contacts);
+        contactsJson = jsonString;
+        debugPrint('✅ Contacts JSON prepared: ${contacts.length} contacts');
+      } catch (e) {
+        debugPrint('❌ Error converting contacts to JSON: $e');
+        contactsJson = '[]';
+      }
+    }
+
+    _currentController!.runJavaScript('''
     try {
       console.log("📞 Contacts received: Success=$success, Count=$totalCount");
       
@@ -1298,38 +1338,39 @@ void _sendContactsToWebView(Map<String, dynamic> contactsData) {
     }
   ''');
 
-  // ❌ REMOVED: All Flutter toast/snackbar code that was here before
-  // ❌ REMOVED: All alert protocol calls 
-  // ❌ REMOVED: All ToastManager calls
-  // ✅ NOW: Only calls getContacts() function in WebView - no Flutter UI feedback
-}
-void _handleLocationRequest(String message) async {
-  if (_currentContext == null || _currentController == null) {
-    debugPrint('❌ No context or controller available for location request');
-    return;
+    // ❌ REMOVED: All Flutter toast/snackbar code that was here before
+    // ❌ REMOVED: All alert protocol calls
+    // ❌ REMOVED: All ToastManager calls
+    // ✅ NOW: Only calls getContacts() function in WebView - no Flutter UI feedback
   }
 
-  if (!_currentContext!.mounted) {
-    debugPrint('❌ Context is no longer mounted for location request');
-    return;
+  void _handleLocationRequest(String message) async {
+    if (_currentContext == null || _currentController == null) {
+      debugPrint('❌ No context or controller available for location request');
+      return;
+    }
+
+    if (!_currentContext!.mounted) {
+      debugPrint('❌ Context is no longer mounted for location request');
+      return;
+    }
+
+    debugPrint('🌍 Processing location request silently...');
+
+    try {
+      // NO LOADING DIALOG - just process silently
+      Map<String, dynamic> locationResult =
+          await LocationService().getCurrentLocation();
+      _sendLocationToWebView(locationResult);
+    } catch (e) {
+      debugPrint('❌ Error handling location request: $e');
+      _sendLocationToWebView({
+        'success': false,
+        'error': 'Failed to get location: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+      });
+    }
   }
-
-  debugPrint('🌍 Processing location request silently...');
-
-  try {
-    // NO LOADING DIALOG - just process silently
-    Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
-    _sendLocationToWebView(locationResult);
-  } catch (e) {
-    debugPrint('❌ Error handling location request: $e');
-    _sendLocationToWebView({
-      'success': false,
-      'error': 'Failed to get location: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-    });
-  }
-}
-
 
   void _showLocationLoadingDialog() {
     if (_currentContext == null) return;
@@ -1356,21 +1397,21 @@ void _handleLocationRequest(String message) async {
     );
   }
 
-void _sendLocationToWebView(Map<String, dynamic> locationData) {
-  if (_currentController == null) {
-    debugPrint('❌ No WebView controller available for location result');
-    return;
-  }
+  void _sendLocationToWebView(Map<String, dynamic> locationData) {
+    if (_currentController == null) {
+      debugPrint('❌ No WebView controller available for location result');
+      return;
+    }
 
-  debugPrint('📱 Sending location data to WebView');
+    debugPrint('📱 Sending location data to WebView');
 
-  final success = locationData['success'] ?? false;
-  final latitude = locationData['latitude'];
-  final longitude = locationData['longitude'];
-  final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
-  final errorCode = locationData['errorCode'] ?? '';
+    final success = locationData['success'] ?? false;
+    final latitude = locationData['latitude'];
+    final longitude = locationData['longitude'];
+    final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = locationData['errorCode'] ?? '';
 
-  _currentController!.runJavaScript('''
+    _currentController!.runJavaScript('''
     try {
       console.log("📍 Location received: Success=$success");
       
@@ -1424,70 +1465,69 @@ void _sendLocationToWebView(Map<String, dynamic> locationData) {
     }
   ''');
 
-  // REMOVED: All native SnackBar code
-}
-void _handleAuthRequest(String message) {
-  debugPrint('🚪 Auth request received: $message');
-  
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for auth request');
-    return;
+    // REMOVED: All native SnackBar code
   }
 
-  if (message == 'logout') {
-    debugPrint('🔄 Processing logout request...');
-    _performLogout();
-  } else {
-    debugPrint('⚠️ Unknown auth request: $message');
+  void _handleAuthRequest(String message) {
+    debugPrint('🚪 Auth request received: $message');
+
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for auth request');
+      return;
+    }
+
+    if (message == 'logout') {
+      debugPrint('🔄 Processing logout request...');
+      _performLogout();
+    } else {
+      debugPrint('⚠️ Unknown auth request: $message');
+    }
   }
-}
 
+  void _performLogout() async {
+    debugPrint('🚪 Starting logout process...');
 
-void _performLogout() async {
-  debugPrint('🚪 Starting logout process...');
-  
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for logout');
-    return;
-  }
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for logout');
+      return;
+    }
 
-  try {
-    final authService = Provider.of<AuthService>(
-      _currentContext!,
-      listen: false,
-    );
-    
-    debugPrint('🔄 Calling authService.logout()...');
-    await authService.logout();
+    try {
+      final authService = Provider.of<AuthService>(
+        _currentContext!,
+        listen: false,
+      );
 
-    debugPrint('✅ Logout successful, using web scripts for feedback...');
-    
-    // Use web scripts instead of native SnackBar
-    if (_currentController != null) {
-      _currentController!.runJavaScript('''
+      debugPrint('🔄 Calling authService.logout()...');
+      await authService.logout();
+
+      debugPrint('✅ Logout successful, using web scripts for feedback...');
+
+      // Use web scripts instead of native SnackBar
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
         if (window.ToastManager) {
           window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
         } else {
           window.location.href = 'toast://' + encodeURIComponent('Logged out successfully');
         }
       ''');
-    }
+      }
 
-    debugPrint('🔄 Navigating to login page...');
-    
-    Navigator.of(_currentContext!).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginPage()),
-      (route) => false,
-    );
-    
-    debugPrint('✅ Navigation to login page completed');
-    
-  } catch (e) {
-    debugPrint('❌ Error during logout: $e');
+      debugPrint('🔄 Navigating to login page...');
 
-    // Use web scripts instead of native SnackBar
-    if (_currentController != null) {
-      _currentController!.runJavaScript('''
+      Navigator.of(_currentContext!).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (route) => false,
+      );
+
+      debugPrint('✅ Navigation to login page completed');
+    } catch (e) {
+      debugPrint('❌ Error during logout: $e');
+
+      // Use web scripts instead of native SnackBar
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
         const errorMessage = 'Error during logout';
         if (window.AlertManager) {
           window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -1495,9 +1535,9 @@ void _performLogout() async {
           window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
       ''');
+      }
     }
   }
-}
 
   void _handleBarcodeRequest(String message) {
     if (_currentContext == null) return;
@@ -1518,12 +1558,13 @@ void _performLogout() async {
       ),
     );
   }
-void _sendBarcodeToWebView(String barcode, bool isContinuous) {
-  if (_currentController == null) return;
 
-  final escapedBarcode = barcode.replaceAll('"', '\\"');
+  void _sendBarcodeToWebView(String barcode, bool isContinuous) {
+    if (_currentController == null) return;
 
-  _currentController!.runJavaScript('''
+    final escapedBarcode = barcode.replaceAll('"', '\\"');
+
+    _currentController!.runJavaScript('''
     try {
       console.log("📸 Barcode received: $escapedBarcode");
       
@@ -1555,33 +1596,35 @@ void _sendBarcodeToWebView(String barcode, bool isContinuous) {
     }
   ''');
 
-  // REMOVED: Native SnackBar code
-}
-void _handleThemeChange(String themeMode) {
-  if (_currentContext != null) {
-    final themeService = Provider.of<ThemeService>(
-      _currentContext!,
-      listen: false,
-    );
-    themeService.updateThemeMode(themeMode);
+    // REMOVED: Native SnackBar code
+  }
 
-    // Use web scripts instead of native SnackBar
-    final message = 'Theme changed to ${themeMode.toUpperCase()} mode';
-    if (_currentController != null) {
-      _currentController!.runJavaScript('''
+  void _handleThemeChange(String themeMode) {
+    if (_currentContext != null) {
+      final themeService = Provider.of<ThemeService>(
+        _currentContext!,
+        listen: false,
+      );
+      themeService.updateThemeMode(themeMode);
+
+      // Use web scripts instead of native SnackBar
+      final message = 'Theme changed to ${themeMode.toUpperCase()} mode';
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
         if (window.ToastManager) {
           window.ToastManager.postMessage('toast://' + encodeURIComponent('$message'));
         } else {
           window.location.href = 'toast://' + encodeURIComponent('$message');
         }
       ''');
+      }
     }
   }
-}
-void _injectJavaScript(WebViewController controller) {
-  debugPrint('💉 Injecting JavaScript...');
 
-  controller.runJavaScript('''
+  void _injectJavaScript(WebViewController controller) {
+    debugPrint('💉 Injecting JavaScript...');
+
+    controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading...");
     
     // Enhanced click handler with full protocol support
@@ -2553,95 +2596,118 @@ void _injectJavaScript(WebViewController controller) {
     document.head.appendChild(enhancementStyles);
     
   ''');
-}
+  }
+
   // Update context
-void updateContext(BuildContext context) {
-  if (_controllerStack.isNotEmpty) {
-    _controllerStack.last['context'] = context;
+  void updateContext(BuildContext context) {
+    if (_controllerStack.isNotEmpty) {
+      _controllerStack.last['context'] = context;
+    }
   }
-}
+
   // Clean up
-void dispose() {
-  _controllerStack.clear();
-}
-
-void pushController(WebViewController controller, BuildContext context, String identifier) {
-  debugPrint('📚 Pushing controller to stack: $identifier (Stack size will be: ${_controllerStack.length + 1})');
-  
-  // PREVENT DUPLICATE IDENTIFIERS
-  _controllerStack.removeWhere((item) => item['identifier'] == identifier);
-  
-  _controllerStack.add({
-    'controller': controller,
-    'context': context,
-    'identifier': identifier,
-    'timestamp': DateTime.now(),
-  });
-  
-  debugPrint('✅ Controller stack updated. Current: $identifier (Final size: ${_controllerStack.length})');
-}
-
-void popController(String identifier) {
-  debugPrint('📚 Attempting to pop controller: $identifier (Current stack size: ${_controllerStack.length})');
-  
-  if (_controllerStack.isEmpty) {
-    debugPrint('⚠️ Controller stack is empty, nothing to pop');
-    return;
-  }
-  
-  // Find and remove the controller with matching identifier
-  _controllerStack.removeWhere((item) => item['identifier'] == identifier);
-  
-  debugPrint('✅ Controller popped. New stack size: ${_controllerStack.length}');
-  
-  if (_controllerStack.isNotEmpty) {
-    final current = _controllerStack.last;
-    debugPrint('🔄 Restored controller: ${current['identifier']}');
-  } else {
-    debugPrint('📭 Controller stack is now empty');
-  }
-}
-int getStackSize() {
-  return _controllerStack.length;
-}
-
-
-void _handleLoginConfigRequest(String loginUrl) async {
-  if (_currentContext == null) {
-    debugPrint('❌ No context available for login config request');
-    return;
+  void dispose() {
+    _controllerStack.clear();
   }
 
-  debugPrint('🔗 WebView login config request: $loginUrl');
-  
-  try {
-    final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
-    
-    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
-      final configUrl = parsedData['configUrl']!;
-      final userRole = parsedData['role'];
-      
-      // No loading dialog - just process
-      debugPrint('🔄 Processing config URL: $configUrl');
-      
-      await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
-      
-      // Use web scripts for success feedback
-      if (_currentController != null) {
-        _currentController!.runJavaScript('''
-          const message = 'Configuration updated successfully!';
+  void pushController(
+    WebViewController controller,
+    BuildContext context,
+    String identifier,
+  ) {
+    debugPrint(
+      '📚 Pushing controller to stack: $identifier (Stack size will be: ${_controllerStack.length + 1})',
+    );
+
+    // PREVENT DUPLICATE IDENTIFIERS
+    _controllerStack.removeWhere((item) => item['identifier'] == identifier);
+
+    _controllerStack.add({
+      'controller': controller,
+      'context': context,
+      'identifier': identifier,
+      'timestamp': DateTime.now(),
+    });
+
+    debugPrint(
+      '✅ Controller stack updated. Current: $identifier (Final size: ${_controllerStack.length})',
+    );
+  }
+
+  void popController(String identifier) {
+    debugPrint(
+      '📚 Attempting to pop controller: $identifier (Current stack size: ${_controllerStack.length})',
+    );
+
+    if (_controllerStack.isEmpty) {
+      debugPrint('⚠️ Controller stack is empty, nothing to pop');
+      return;
+    }
+
+    // Find and remove the controller with matching identifier
+    _controllerStack.removeWhere((item) => item['identifier'] == identifier);
+
+    debugPrint(
+      '✅ Controller popped. New stack size: ${_controllerStack.length}',
+    );
+
+    if (_controllerStack.isNotEmpty) {
+      final current = _controllerStack.last;
+      debugPrint('🔄 Restored controller: ${current['identifier']}');
+    } else {
+      debugPrint('📭 Controller stack is now empty');
+    }
+  }
+
+  int getStackSize() {
+    return _controllerStack.length;
+  }
+
+  // lib/services/webview_service.dart - REPLACE the _handleLoginConfigRequest method with this:
+
+  void _handleLoginConfigRequest(String loginUrl) async {
+    if (_currentContext == null) {
+      debugPrint('❌ No context available for login config request');
+      return;
+    }
+
+    debugPrint('🔗 WebView login config request: $loginUrl');
+
+    try {
+      final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
+
+      if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+        final configUrl = parsedData['configUrl']!;
+        final userRole = parsedData['role'];
+
+        debugPrint('🔄 Processing config URL: $configUrl');
+        debugPrint('👤 User role: ${userRole ?? 'not specified'}');
+
+        // 🆕 ENHANCED: Set dynamic config URL with context
+        await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
+
+        // 🆕 NEW: Reload config immediately with current context
+        if (_currentContext != null && _currentContext!.mounted) {
+          debugPrint('🔄 Reloading configuration with WebView context...');
+          await ConfigService().loadConfig(_currentContext!);
+          debugPrint('✅ Configuration reloaded with enhanced app data');
+        }
+
+        // Use web scripts for success feedback
+        if (_currentController != null) {
+          _currentController!.runJavaScript('''
+          const message = 'Configuration updated successfully with enhanced app data!';
           if (window.ToastManager) {
             window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
           } else {
             window.location.href = 'toast://' + encodeURIComponent(message);
           }
         ''');
-      }
-      
-    } else {
-      // Use web scripts for error feedback
-      if (_currentController != null) {
-        _currentController!.runJavaScript('''
+        }
+      } else {
+        // Use web scripts for error feedback
+        if (_currentController != null) {
+          _currentController!.runJavaScript('''
           const errorMessage = 'Invalid configuration URL';
           if (window.AlertManager) {
             window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -2649,14 +2715,14 @@ void _handleLoginConfigRequest(String loginUrl) async {
             window.location.href = 'alert://' + encodeURIComponent(errorMessage);
           }
         ''');
+        }
       }
-    }
-  } catch (e) {
-    debugPrint('❌ Error in WebView config request: $e');
-    
-    // Use web scripts for error feedback
-    if (_currentController != null) {
-      _currentController!.runJavaScript('''
+    } catch (e) {
+      debugPrint('❌ Error in WebView config request: $e');
+
+      // Use web scripts for error feedback
+      if (_currentController != null) {
+        _currentController!.runJavaScript('''
         const errorMessage = 'Error updating configuration: ${e.toString()}';
         if (window.AlertManager) {
           window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -2664,21 +2730,22 @@ void _handleLoginConfigRequest(String loginUrl) async {
           window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
       ''');
+      }
     }
   }
-}
 
-void clearCurrentController() {
-  debugPrint('🧹 Clearing all controller references');
-  _controllerStack.clear();
-}
-bool isControllerValid() {
-  return _currentController != null && _currentContext != null;
-}
-void updateController(WebViewController controller, BuildContext context) {
-  // This method is now used for MainScreen only
-  final identifier = 'MainScreen_${DateTime.now().millisecondsSinceEpoch}';
-  pushController(controller, context, identifier);
-}
+  void clearCurrentController() {
+    debugPrint('🧹 Clearing all controller references');
+    _controllerStack.clear();
+  }
 
+  bool isControllerValid() {
+    return _currentController != null && _currentContext != null;
+  }
+
+  void updateController(WebViewController controller, BuildContext context) {
+    // This method is now used for MainScreen only
+    final identifier = 'MainScreen_${DateTime.now().millisecondsSinceEpoch}';
+    pushController(controller, context, identifier);
+  }
 }

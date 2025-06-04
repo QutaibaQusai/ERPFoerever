@@ -94,7 +94,6 @@ void _initializeWebView() {
       }
     });
   }
-  /// UPDATED: Handle login success with config URL support
   void _handleLoginSuccess(String loginUrl) async {
   debugPrint('✅ User logged in successfully with URL: $loginUrl');
   
@@ -106,17 +105,17 @@ void _initializeWebView() {
     if (loginUrl.startsWith('loggedin://')) {
       configUrl = loginUrl;
       debugPrint('🔗 Config URL detected: $configUrl');
-      
-      // No loading dialog - just process
-      debugPrint('🔄 Processing configuration...');
+      debugPrint('🔄 Processing configuration with login context...');
     }
     
-    // Login with config URL
-    await authService.login(configUrl: configUrl);
+    // 🆕 ENHANCED: Login with config URL and pass context for better app data
+    await authService.login(
+      configUrl: configUrl,
+      context: mounted ? context : null, // Pass context if still mounted
+    );
     
     debugPrint('✅ Login successful - navigating to main screen');
     
-    // Navigate to main screen immediately
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -128,7 +127,6 @@ void _initializeWebView() {
   } catch (e) {
     debugPrint('❌ Error during login process: $e');
     
-    // Use web script for error notification
     if (mounted) {
       _controller.runJavaScript('''
         const errorMessage = 'Login error: ${e.toString()}';
@@ -145,8 +143,6 @@ void _initializeWebView() {
     }
   }
 }
-
-  
 
   @override
   Widget build(BuildContext context) {

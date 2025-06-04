@@ -15,22 +15,22 @@ void main() async {
   // Preserve the native splash screen
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-  
+
   // Initialize services
   final configService = ConfigService();
   final themeService = ThemeService();
   final authService = AuthService();
-  
+
   // Load configuration
   debugPrint('🚀 ERPForever App Starting...');
   debugPrint('📡 Loading configuration from remote source...');
-  
+
   await configService.loadConfig();
-  
+
   // Log configuration status
   final cacheStatus = await configService.getCacheStatus();
   debugPrint('💾 Cache Status: $cacheStatus');
-  
+
   if (configService.config != null) {
     debugPrint('✅ Configuration loaded successfully');
     debugPrint('🔗 Main Icons: ${configService.config!.mainIcons.length}');
@@ -40,13 +40,13 @@ void main() async {
   } else {
     debugPrint('⚠️ Using fallback configuration');
   }
-  
+
   // Load saved theme
   final savedTheme = await themeService.getSavedThemeMode();
-  
+
   // Check authentication state
   final isLoggedIn = await authService.checkAuthState();
-  
+
   runApp(
     MultiProvider(
       providers: [
@@ -56,10 +56,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => RefreshStateManager()),
         ChangeNotifierProvider(create: (_) => SplashStateManager()),
       ],
-      child: MyApp(
-        initialThemeMode: savedTheme,
-        isLoggedIn: isLoggedIn,
-      ),
+      child: MyApp(initialThemeMode: savedTheme, isLoggedIn: isLoggedIn),
     ),
   );
 }
@@ -101,7 +98,7 @@ class SplashStateManager extends ChangeNotifier {
 
   void _removeSplash() {
     _isSplashRemoved = true;
-    
+
     try {
       FlutterNativeSplash.remove();
       debugPrint('✅ Splash screen removed successfully!');
@@ -114,13 +111,9 @@ class SplashStateManager extends ChangeNotifier {
 
 class MyApp extends StatelessWidget {
   final String initialThemeMode;
-  final bool? isLoggedIn; 
-  
-  const MyApp({
-    super.key, 
-    required this.initialThemeMode,
-    this.isLoggedIn, 
-  });
+  final bool? isLoggedIn;
+
+  const MyApp({super.key, required this.initialThemeMode, this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -128,6 +121,11 @@ class MyApp extends StatelessWidget {
       builder: (context, configService, themeService, authService, child) {
         final shouldShowMainScreen = isLoggedIn ?? authService.isLoggedIn;
         final textDirection = configService.getTextDirection();
+
+        // 🆕 NEW: Enhanced config loading with context after app is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _enhanceConfigWithContext(context, configService);
+        });
 
         return Directionality(
           textDirection: textDirection,
@@ -138,7 +136,8 @@ class MyApp extends StatelessWidget {
             theme: DynamicTheme.buildLightTheme(configService.config),
             darkTheme: DynamicTheme.buildDarkTheme(configService.config),
             home: ScreenshotWrapper(
-              child: shouldShowMainScreen ? const MainScreen() : const LoginPage(),
+              child:
+                  shouldShowMainScreen ? const MainScreen() : const LoginPage(),
             ),
             builder: (context, widget) {
               return Directionality(
@@ -150,5 +149,33 @@ class MyApp extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// 🆕 NEW: Add this method to the MyApp class
+  void _enhanceConfigWithContext(
+    BuildContext context,
+    ConfigService configService,
+  ) async {
+    try {
+      debugPrint(
+        '🔧 Enhancing configuration with context for better app data...',
+      );
+
+      // Check if we need to reload with enhanced context
+      final cacheStatus = await configService.getCacheStatus();
+      final cacheAgeMinutes =
+          (cacheStatus['cacheAge'] as int? ?? 0) / (1000 * 60);
+
+      // Only reload if cache is older than 1 minute or if we haven't loaded with context yet
+      if (cacheAgeMinutes > 1 || !configService.isLoaded) {
+        debugPrint('🔄 Reloading configuration with enhanced app data...');
+        await configService.loadConfig(context);
+        debugPrint('✅ Configuration enhanced with context-aware app data');
+      } else {
+        debugPrint('⏩ Recent config available, skipping context enhancement');
+      }
+    } catch (e) {
+      debugPrint('❌ Error enhancing config with context: $e');
+    }
   }
 }

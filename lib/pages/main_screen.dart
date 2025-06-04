@@ -1,4 +1,4 @@
-// lib/pages/main_screen.dart - UPDATED: Preload other tabs after splash
+// lib/pages/main_screen.dart 
 import 'package:ERPForever/main.dart';
 import 'package:ERPForever/services/pull_to_refresh_service.dart';
 import 'package:flutter/material.dart';
@@ -78,7 +78,6 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   }
 }
 void _fixWebViewAfterBackground() async {
-  // Wait for app to fully resume
   await Future.delayed(Duration(milliseconds: 800));
   
   if (!mounted) return;

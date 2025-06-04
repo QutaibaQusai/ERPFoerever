@@ -326,6 +326,8 @@ String _extractToastMessage(String url) {
     return '';
   }
 }
+
+
 Future<void> _loadUrlWithAppData(WebViewController controller, String originalUrl, [BuildContext? context]) async {
   try {
     debugPrint('📊 Collecting enhanced app data with language and theme...');
@@ -354,71 +356,117 @@ Future<void> _loadUrlWithAppData(WebViewController controller, String originalUr
     controller.loadRequest(Uri.parse(originalUrl));
   }
 }
+
 String _buildEnhancedUrl(String baseUrl, Map<String, String> appData) {
   try {
     final uri = Uri.parse(baseUrl);
-    final queryParams = Map<String, String>.from(uri.queryParameters);
+    final originalParams = Map<String, String>.from(uri.queryParameters);
     
-    // Add essential app data to URL parameters
-    queryParams.addAll({
-      'app_source': 'flutter_app',
-      'app_version': appData['app_version'] ?? 'unknown',
-      'platform': appData['platform'] ?? 'unknown',
-      'device_model': appData['device_model'] ?? 'unknown',
-      'current_language': appData['current_language'] ?? 'en',
-      'current_theme': appData['current_theme_mode'] ?? 'system',
-      'text_direction': appData['text_direction'] ?? 'LTR',
-      'notification_id': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID, // ADD THIS LINE
-      'timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
-    });
+    debugPrint('📋 Original parameters found: ${originalParams.keys.toList()}');
+    
+    // ✅ SOLUTION: Use alternative parameter names to avoid conflicts
+    final alternativeAppData = {
+      // Use 'flutter_' prefix to avoid conflicts with original parameters
+      'flutter_app_source': 'flutter_app',
+      'flutter_app_version': appData['app_version'] ?? 'unknown',
+      'flutter_platform': appData['platform'] ?? 'unknown',
+      'flutter_device_model': appData['device_model'] ?? 'unknown',
+      'flutter_language': appData['current_language'] ?? 'en',
+      'flutter_theme': appData['current_theme_mode'] ?? 'system',
+      'flutter_direction': appData['text_direction'] ?? 'LTR',
+      'flutter_notification_id': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
+      'flutter_timestamp': DateTime.now().millisecondsSinceEpoch.toString(),
+      
+      // Alternative method: Use 'app_data' as a single encoded parameter
+      'app_data': _encodeAppDataToString(appData),
+    };
 
-    final newUri = uri.replace(queryParameters: queryParams);
+    // Combine original parameters with alternative app data
+    final combinedParams = <String, String>{};
+    
+    // ✅ FIRST: Add original parameters (PRESERVED)
+    combinedParams.addAll(originalParams);
+    
+    // ✅ SECOND: Add app data using alternative names (NO CONFLICTS)
+    for (final entry in alternativeAppData.entries) {
+      // Only add if not already exists in original parameters
+      if (!combinedParams.containsKey(entry.key)) {
+        combinedParams[entry.key] = entry.value;
+      } else {
+        debugPrint('⚠️ Skipping ${entry.key} - already exists in original parameters');
+      }
+    }
+
+    final newUri = uri.replace(queryParameters: combinedParams);
+    
+    debugPrint('✅ URL enhanced: Original params preserved + Alternative app data added');
+    debugPrint('📊 Total parameters: ${combinedParams.length}');
+    debugPrint('📋 Original count: ${originalParams.length}, Added: ${combinedParams.length - originalParams.length}');
+    
     return newUri.toString();
     
   } catch (e) {
-    debugPrint('❌ Error building enhanced URL: $e');
+    debugPrint('❌ Error building enhanced URL alternative: $e');
     return baseUrl;
+  }
+}
+String _encodeAppDataToString(Map<String, String> appData) {
+  try {
+    // Create a compact representation of app data
+    final compactData = {
+      'v': appData['app_version'] ?? 'unknown',
+      'p': appData['platform'] ?? 'unknown',
+      'l': appData['current_language'] ?? 'en',
+      't': appData['current_theme_mode'] ?? 'system',
+      'd': appData['text_direction'] ?? 'LTR',
+      'n': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
+      'ts': DateTime.now().millisecondsSinceEpoch.toString(),
+    };
+    
+    // Convert to JSON and encode
+    final jsonString = jsonEncode(compactData);
+    final encodedData = base64Encode(utf8.encode(jsonString));
+    
+    return encodedData;
+  } catch (e) {
+    debugPrint('❌ Error encoding app data: $e');
+    return '';
   }
 }
 // ADD this new method to your WebViewService class:
 Map<String, String> _buildAppDataHeaders(Map<String, String> appData, [BuildContext? context]) {
   final headers = <String, String>{
     'User-Agent': 'ERPForever-Flutter-App/1.0',
-    'X-App-Source': 'flutter_mobile',
-    'X-Client-Version': appData['app_version'] ?? 'unknown',
-    'X-Platform': appData['platform'] ?? 'unknown',
-    'X-Device-Model': appData['device_model'] ?? 'unknown',
-    'X-App-Timestamp': DateTime.now().toIso8601String(),
+    
+    // 🔧 FIXED: Use consistent header naming
+    'X-Flutter-App-Source': 'flutter_mobile',
+    'X-Flutter-Client-Version': appData['app_version'] ?? 'unknown',
+    'X-Flutter-Platform': appData['platform'] ?? 'unknown',
+    'X-Flutter-Device-Model': appData['device_model'] ?? 'unknown',
+    'X-Flutter-Timestamp': DateTime.now().toIso8601String(),
     
     // Language and theme headers
-    'X-Current-Language': appData['current_language'] ?? 'en',
-    'X-Current-Theme': appData['current_theme_mode'] ?? 'system',
-    'X-Text-Direction': appData['text_direction'] ?? 'LTR',
-    'X-Theme-Setting': appData['theme_setting'] ?? 'system',
+    'X-Flutter-Language': appData['current_language'] ?? 'en',
+    'X-Flutter-Theme': appData['current_theme_mode'] ?? 'system',
+    'X-Flutter-Direction': appData['text_direction'] ?? 'LTR',
+    'X-Flutter-Theme-Setting': appData['theme_setting'] ?? 'system',
     
-    // NOTIFICATION ID HEADER - ADD THIS LINE
-    'X-Notification-ID': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
+    // Notification ID header
+    'X-Flutter-Notification-ID': appData['notification_id'] ?? AppDataService.NOTIFICATION_ID,
   };
 
-  // Add important data as custom headers
+  // Add device-specific data
   if (appData['device_brand'] != null) {
-    headers['X-Device-Brand'] = appData['device_brand']!;
+    headers['X-Flutter-Device-Brand'] = appData['device_brand']!;
   }
   if (appData['build_number'] != null) {
-    headers['X-Build-Number'] = appData['build_number']!;
+    headers['X-Flutter-Build-Number'] = appData['build_number']!;
   }
   if (appData['timezone'] != null) {
-    headers['X-Timezone'] = appData['timezone']!;
+    headers['X-Flutter-Timezone'] = appData['timezone']!;
   }
 
-  // Add compact headers using the helper method
-  try {
-    final compactHeaders = AppDataService().getCompactDataForHeaders(context);
-    headers.addAll(compactHeaders);
-  } catch (e) {
-    debugPrint('❌ Error adding compact headers: $e');
-  }
-
+  debugPrint('📋 Headers created with Flutter-specific naming to avoid conflicts');
   return headers;
 }
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {

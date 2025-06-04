@@ -434,91 +434,58 @@ void _showUrlError(String message) {
       }
     });
   }
-
-  void _setupSheetPage() {
-    _controller.runJavaScript('''
-      console.log('🔧 Setting up sheet page for optimal scrolling...');
+void _setupSheetPage() {
+  _controller.runJavaScript('''
+    console.log('🔧 Setting up sheet page for optimal scrolling...');
+    
+    // ENHANCED: Prevent pull-to-refresh during content updates
+    window.lastContentChangeTime = 0;
+    
+    // Enhanced scrolling setup for sheet
+    function setupSheetScrolling() {
+      // Remove any CSS that might prevent scrolling
+      document.body.style.overflow = 'auto';
+      document.body.style.overflowY = 'auto';
+      document.body.style.webkitOverflowScrolling = 'touch';
+      document.body.style.height = 'auto';
+      document.body.style.minHeight = '100vh';
+      document.body.style.position = 'relative';
       
-      // Enhanced scrolling setup for sheet
-      function setupSheetScrolling() {
-        // Remove any CSS that might prevent scrolling
-        document.body.style.overflow = 'auto';
-        document.body.style.overflowY = 'auto';
-        document.body.style.webkitOverflowScrolling = 'touch';
-        document.body.style.height = 'auto';
-        document.body.style.minHeight = '100vh';
-        document.body.style.position = 'relative';
-        
-        // Ensure html allows scrolling
-        document.documentElement.style.overflow = 'auto';
-        document.documentElement.style.height = 'auto';
-        document.documentElement.style.position = 'relative';
-        
-        // Remove fixed positioning that might interfere with sheet scrolling
-        var elements = document.querySelectorAll('*');
-        for(var i = 0; i < elements.length; i++) {
-          var element = elements[i];
-          var computedStyle = window.getComputedStyle(element);
-          
-          if(computedStyle.position === 'fixed' && element.tagName !== 'BODY' && element.tagName !== 'HTML') {
-            // Only change position if it's not critical UI element
-            if (!element.classList.contains('keep-fixed') && !element.id.includes('native-refresh')) {
-              element.style.position = 'absolute';
-              console.log('Changed fixed element to absolute:', element.tagName, element.className);
-            }
-          }
-          
-          // Remove any transform3d that might cause issues
-          if (computedStyle.transform && computedStyle.transform !== 'none') {
-            if (!element.id.includes('native-refresh')) {
-              element.style.transform = 'none';
-            }
-          }
-        }
-        
-        // Ensure smooth scrolling
-        document.documentElement.style.scrollBehavior = 'smooth';
-        document.body.style.scrollBehavior = 'smooth';
-        
-        // Remove any overflow hidden on container elements
-        var containers = document.querySelectorAll('div, main, section, article');
-        for(var i = 0; i < containers.length; i++) {
-          var container = containers[i];
-          var style = window.getComputedStyle(container);
-          if (style.overflow === 'hidden' && !container.id.includes('native-refresh')) {
-            container.style.overflow = 'visible';
-          }
-        }
-        
-        console.log('✅ Sheet scrolling setup completed');
-      }
+      // ENHANCED: Mark content containers for better detection
+      var chatContainers = document.querySelectorAll('.chat-container, .message-container, .content-container, [class*="chat"], [class*="message"]');
+      chatContainers.forEach(function(container) {
+        container.style.overflowAnchor = 'none';
+        container.setAttribute('data-dynamic-content', 'true');
+      });
       
-      // Run setup immediately and after a delay
-      setupSheetScrolling();
-      setTimeout(setupSheetScrolling, 500);
-      setTimeout(setupSheetScrolling, 1000);
+      console.log('✅ Sheet scrolling setup completed with dynamic content support');
+    }
+    
+    // Run setup immediately and after delays
+    setupSheetScrolling();
+    setTimeout(setupSheetScrolling, 500);
+    setTimeout(setupSheetScrolling, 1000);
+    
+    // ENHANCED: Monitor for chatbot/dynamic content
+    function monitorDynamicContent() {
+      var contentAreas = document.querySelectorAll('.chat-container, .message-container, .content-container, [class*="chat"], [class*="message"]');
       
-      // Re-run setup when DOM changes
-      var observer = new MutationObserver(function(mutations) {
-        var shouldResetup = false;
-        mutations.forEach(function(mutation) {
-          if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-            shouldResetup = true;
-          }
+      contentAreas.forEach(function(area) {
+        var observer = new MutationObserver(function() {
+          window.lastContentChangeTime = Date.now();
         });
         
-        if (shouldResetup) {
-          setTimeout(setupSheetScrolling, 100);
-        }
+        observer.observe(area, {
+          childList: true,
+          subtree: true,
+          characterData: true
+        });
       });
-      
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-    ''');
-  }
-
+    }
+    
+    setTimeout(monitorDynamicContent, 1000);
+  ''');
+}
   void _reinjectWebViewServiceJS() {
     debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewSheet...');
 

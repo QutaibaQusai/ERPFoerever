@@ -26,7 +26,8 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _MainScreenState extends State<MainScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   late ConfigService _configService;
   late WebViewControllerManager _controllerManager;
@@ -38,49 +39,55 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin, 
   final Map<int, bool> _refreshChannelAdded = {};
   final Map<int, String> _refreshChannelNames = {};
   bool _hasNotifiedSplash = false;
-  
+
   bool _hasStartedPreloading = false;
 
- @override
-void initState() {
-  super.initState();
-  _configService = ConfigService();
-  _controllerManager = WebViewControllerManager();
+  @override
+  void initState() {
+    super.initState();
+    _configService = ConfigService();
+    _controllerManager = WebViewControllerManager();
 
-  _initializeLoadingStates();
-  WidgetsBinding.instance.addObserver(this);
-}
-@override
-void didChangeAppLifecycleState(AppLifecycleState state) {
-  super.didChangeAppLifecycleState(state);
-  
-  switch (state) {
-    case AppLifecycleState.paused:
-      debugPrint('📱 App going to background - preserving WebView state');
-      _preserveWebViewState();
-      break;
-    case AppLifecycleState.resumed:
-      debugPrint('📱 App resumed from background - restoring WebView state');
-      _restoreWebViewState();
-      break;
-    default:
-      break;
+    _initializeLoadingStates();
+    WidgetsBinding.instance.addObserver(this);
   }
-}
-void _restoreWebViewState() async {
-  try {
-    // Small delay to ensure app is fully resumed
-    await Future.delayed(Duration(milliseconds: 300));
-    
-    if (!mounted) return;
-    
-    final config = _configService.config;
-    if (config == null || _selectedIndex >= config.mainIcons.length) return;
-    
-    final controller = _controllerManager.getController(_selectedIndex, '', context);
-    
-    // Restore scroll position and check if content is still there
-    controller.runJavaScript('''
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.paused:
+        debugPrint('📱 App going to background - preserving WebView state');
+        _preserveWebViewState();
+        break;
+      case AppLifecycleState.resumed:
+        debugPrint('📱 App resumed from background - restoring WebView state');
+        _restoreWebViewState();
+        break;
+      default:
+        break;
+    }
+  }
+
+  void _restoreWebViewState() async {
+    try {
+      // Small delay to ensure app is fully resumed
+      await Future.delayed(Duration(milliseconds: 300));
+
+      if (!mounted) return;
+
+      final config = _configService.config;
+      if (config == null || _selectedIndex >= config.mainIcons.length) return;
+
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+
+      // Restore scroll position and check if content is still there
+      controller.runJavaScript('''
       try {
         // Check if page content is still available
         const hasContent = document.body && document.body.children.length > 0;
@@ -116,29 +123,35 @@ void _restoreWebViewState() async {
         console.error('❌ Error restoring state:', e);
       }
     ''');
-    
-    // Update UI state without forcing refresh
-    setState(() {
-      // Keep current loading state - don't force loading
-      // _loadingStates[_selectedIndex] = _loadingStates[_selectedIndex] ?? false;
-    });
-    
-    debugPrint('✅ WebView state restoration attempted for tab $_selectedIndex');
-  } catch (e) {
-    debugPrint('❌ Error restoring WebView state: $e');
-  }
-}
 
-void _preserveWebViewState() {
-  try {
-    final config = _configService.config;
-    if (config == null || _selectedIndex >= config.mainIcons.length) return;
-    
-    // Save current scroll position and state
-    final controller = _controllerManager.getController(_selectedIndex, '', context);
-    
-    // Inject script to save scroll position
-    controller.runJavaScript('''
+      // Update UI state without forcing refresh
+      setState(() {
+        // Keep current loading state - don't force loading
+        // _loadingStates[_selectedIndex] = _loadingStates[_selectedIndex] ?? false;
+      });
+
+      debugPrint(
+        '✅ WebView state restoration attempted for tab $_selectedIndex',
+      );
+    } catch (e) {
+      debugPrint('❌ Error restoring WebView state: $e');
+    }
+  }
+
+  void _preserveWebViewState() {
+    try {
+      final config = _configService.config;
+      if (config == null || _selectedIndex >= config.mainIcons.length) return;
+
+      // Save current scroll position and state
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+
+      // Inject script to save scroll position
+      controller.runJavaScript('''
       try {
         // Save current scroll position
         window.savedScrollPosition = {
@@ -151,13 +164,12 @@ void _preserveWebViewState() {
         console.error('❌ Error saving scroll position:', e);
       }
     ''');
-    
-    debugPrint('✅ WebView state preserved for tab $_selectedIndex');
-  } catch (e) {
-    debugPrint('❌ Error preserving WebView state: $e');
+
+      debugPrint('✅ WebView state preserved for tab $_selectedIndex');
+    } catch (e) {
+      debugPrint('❌ Error preserving WebView state: $e');
+    }
   }
-}
-  
 
   void _initializeLoadingStates() {
     final config = _configService.config;
@@ -168,82 +180,93 @@ void _preserveWebViewState() {
       _isRefreshingStates[0] = false;
       _channelAdded[0] = false;
       _refreshChannelAdded[0] = false;
-      _refreshChannelNames[0] = 
+      _refreshChannelNames[0] =
           'MainScreenRefresh_0_${DateTime.now().millisecondsSinceEpoch}';
-      
+
       debugPrint('✅ Initialized only index 0 for lazy loading during splash');
     }
   }
-  
+
   void _notifyWebViewReady() {
     if (!_hasNotifiedSplash) {
       _hasNotifiedSplash = true;
-      
+
       try {
-        final splashManager = Provider.of<SplashStateManager>(context, listen: false);
+        final splashManager = Provider.of<SplashStateManager>(
+          context,
+          listen: false,
+        );
         splashManager.setWebViewReady();
-        debugPrint('🌐 MainScreen: Notified splash manager that WebView is ready');
-        
+        debugPrint(
+          '🌐 MainScreen: Notified splash manager that WebView is ready',
+        );
+
         // 🆕 NEW: Start preloading other tabs after splash notification
         _startPreloadingOtherTabs();
-        
       } catch (e) {
         debugPrint('❌ MainScreen: Error notifying splash manager: $e');
       }
     }
   }
 
-  // 🆕 NEW: Preload all other tabs after splash
   void _startPreloadingOtherTabs() async {
     if (_hasStartedPreloading) return;
     _hasStartedPreloading = true;
-    
+
     final config = _configService.config;
     if (config == null || config.mainIcons.length <= 1) {
       debugPrint('⚠️ No other tabs to preload');
       return;
     }
 
-    debugPrint('🔄 Starting to preload other tabs after splash...');
-    
-    // Wait a bit to ensure splash is handled and index 0 is fully loaded
+    debugPrint(
+      '🔄 Starting to preload other tabs with FULL pull-to-refresh setup...',
+    );
+
+    // Wait for splash to be handled
     await Future.delayed(const Duration(milliseconds: 1000));
-    
-    // Preload tabs 1, 2, 3, etc. with delays between them
+
+    // Preload tabs 1, 2, 3, etc. with complete setup
     for (int i = 1; i < config.mainIcons.length; i++) {
       try {
         final mainIcon = config.mainIcons[i];
-        
-        // Skip sheet_webview tabs (they don't need preloading)
+
+        // Skip sheet_webview tabs
         if (mainIcon.linkType == 'sheet_webview') {
           debugPrint('⏭️ Skipping sheet tab $i: ${mainIcon.title}');
           continue;
         }
-        
-        debugPrint('📱 Preloading tab $i: ${mainIcon.title} (${mainIcon.link})');
-        
-        // Initialize tab state
+
+        debugPrint('📱 Preloading tab $i with FULL setup: ${mainIcon.title}');
+
+        // ✅ FIXED: Ensure complete initialization
         _ensureTabInitialized(i);
-        
-        // Create and setup the WebView controller for this tab
-        final controller = _controllerManager.getController(i, mainIcon.link, context);
-        
-        // Set up the controller with navigation delegate
-        _setupTabController(controller, i, mainIcon);
-        
-        debugPrint('✅ Tab $i preloaded successfully');
-        
-        // Add delay between preloading tabs to avoid overwhelming
+
+        // ✅ FIXED: Get controller and set up completely
+        final controller = _controllerManager.getController(
+          i,
+          mainIcon.link,
+          context,
+        );
+        _setupTabControllerForPullRefresh(controller, i);
+
+        // ✅ FIXED: Add refresh channel immediately
+        _addRefreshChannelSafely(controller, i);
+
+        debugPrint('✅ Tab $i preloaded with complete pull-to-refresh setup');
+
+        // Delay between preloads
         if (i < config.mainIcons.length - 1) {
-          await Future.delayed(const Duration(milliseconds: 800));
+          await Future.delayed(const Duration(milliseconds: 600));
         }
-        
       } catch (e) {
         debugPrint('❌ Error preloading tab $i: $e');
       }
     }
-    
-    debugPrint('🎉 All other tabs preloaded successfully!');
+
+    debugPrint(
+      '🎉 All tabs preloaded with COMPLETE pull-to-refresh functionality!',
+    );
   }
 
   // 🆕 NEW: Setup controller for preloaded tabs
@@ -261,7 +284,7 @@ void _preserveWebViewState() {
         },
         onPageFinished: (String url) {
           debugPrint('✅ Preloaded tab $index finished loading: $url');
-          
+
           if (mounted) {
             setState(() {
               _loadingStates[index] = false;
@@ -275,11 +298,15 @@ void _preserveWebViewState() {
           Future.delayed(const Duration(milliseconds: 800), () {
             _injectNativePullToRefresh(controller, index);
           });
-          
-          debugPrint('🎯 Tab $index (${mainIcon.title}) is now ready for instant switching!');
+
+          debugPrint(
+            '🎯 Tab $index (${mainIcon.title}) is now ready for instant switching!',
+          );
         },
         onWebResourceError: (WebResourceError error) {
-          debugPrint('❌ WebResource error for preloaded tab $index: ${error.description}');
+          debugPrint(
+            '❌ WebResource error for preloaded tab $index: ${error.description}',
+          );
           if (mounted) {
             setState(() {
               _loadingStates[index] = false;
@@ -374,16 +401,18 @@ void _preserveWebViewState() {
         final isRefreshAllowed = refreshManager.isRefreshEnabled;
 
         return RefreshIndicator(
-          onRefresh: isRefreshAllowed
-              ? () => _refreshWebView(index)
-              : () async {
-                  debugPrint('🚫 Refresh blocked - sheet is open');
-                  return;
-                },
+          onRefresh:
+              isRefreshAllowed
+                  ? () => _refreshWebView(index)
+                  : () async {
+                    debugPrint('🚫 Refresh blocked - sheet is open');
+                    return;
+                  },
           child: Stack(
             children: [
               _buildWebView(index, mainIcon.link),
-              if (_loadingStates[index] == true || _isRefreshingStates[index] == true)
+              if (_loadingStates[index] == true ||
+                  _isRefreshingStates[index] == true)
                 const LoadingWidget(),
               if (_isAtTopStates[index] == true &&
                   _isRefreshingStates[index] == false &&
@@ -439,18 +468,118 @@ void _preserveWebViewState() {
     }
   }
 
-Widget _buildWebView(int index, String url) {
-  final controller = _controllerManager.getController(index, url, context);
+  Widget _buildWebView(int index, String url) {
+    final controller = _controllerManager.getController(index, url, context);
 
-  // For index 0 or preloaded tabs, controller is already set up
-  // For new tabs clicked for first time, set up the controller
-  if (index != 0 && !_channelAdded.containsKey(index)) {
-    _setupTabController(controller, index, _configService.config!.mainIcons[index]);
+    // ✅ FIXED: Always ensure tab is initialized for pull-to-refresh
+    _ensureTabInitialized(index);
+
+    // ✅ FIXED: Always set up the controller properly, regardless of tab index
+    _setupTabControllerForPullRefresh(controller, index);
+
+    // ✅ FIXED: Always add refresh channel - with better error handling
+    if (_refreshChannelAdded[index] != true) {
+      _addRefreshChannelSafely(controller, index);
+    }
+
+    return WebViewWidget(controller: controller);
   }
 
-  // FIXED: Check if refresh channel is already added to prevent duplicate channel error
-  if (_refreshChannelAdded[index] != true) {
+  void _ensureTabInitialized(int index) {
+    if (!_loadingStates.containsKey(index)) {
+      debugPrint('🔧 Initializing tab $index for pull-to-refresh');
+
+      _loadingStates[index] = false; // Start as not loading for existing tabs
+      _isAtTopStates[index] = true;
+      _isRefreshingStates[index] = false;
+      _channelAdded[index] = false;
+      _refreshChannelAdded[index] = false;
+      _refreshChannelNames[index] =
+          'MainScreenRefresh_${index}_${DateTime.now().millisecondsSinceEpoch}';
+
+      debugPrint(
+        '✅ Tab $index initialized with channel: ${_refreshChannelNames[index]}',
+      );
+    }
+  }
+
+  void _setupTabControllerForPullRefresh(
+    WebViewController controller,
+    int index,
+  ) {
+    // Only set up if not already done
+    if (_channelAdded[index] == true) {
+      debugPrint('⏩ Tab $index controller already set up, skipping...');
+      return;
+    }
+
+    debugPrint('🔧 Setting up controller for tab $index pull-to-refresh...');
+
+    controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (String url) {
+          debugPrint('🔄 Tab $index page started loading: $url');
+          if (mounted) {
+            setState(() {
+              _loadingStates[index] = true;
+              _isAtTopStates[index] = true;
+            });
+          }
+        },
+        onPageFinished: (String url) {
+          debugPrint('✅ Tab $index page finished loading: $url');
+
+          if (mounted) {
+            setState(() {
+              _loadingStates[index] = false;
+            });
+          }
+
+          // ✅ CRITICAL: Always notify splash for any tab that finishes loading
+          if (index == _selectedIndex) {
+            _notifyWebViewReady();
+          }
+
+          // ✅ FIXED: Always inject scroll monitoring for every tab
+          _injectScrollMonitoring(controller, index);
+
+          // ✅ FIXED: Always inject pull-to-refresh for every tab
+          Future.delayed(const Duration(milliseconds: 800), () {
+            if (mounted) {
+              _injectNativePullToRefresh(controller, index);
+            }
+          });
+
+          // ✅ FIXED: Always inject background state handling
+          _injectBackgroundStateHandling(controller, index);
+
+          debugPrint('🎯 Tab $index fully set up for pull-to-refresh!');
+        },
+        onWebResourceError: (WebResourceError error) {
+          debugPrint(
+            '❌ WebResource error for tab $index: ${error.description}',
+          );
+          if (mounted) {
+            setState(() {
+              _loadingStates[index] = false;
+            });
+          }
+        },
+        onNavigationRequest: (NavigationRequest request) {
+          WebViewService().updateController(controller, context);
+          return _handleNavigationRequest(request);
+        },
+      ),
+    );
+
+    // Mark as set up
+    _channelAdded[index] = true;
+    debugPrint('✅ Tab $index controller setup completed');
+  }
+
+  void _addRefreshChannelSafely(WebViewController controller, int index) {
     final refreshChannelName = _refreshChannelNames[index]!;
+
     try {
       controller.addJavaScriptChannel(
         refreshChannelName,
@@ -464,76 +593,20 @@ Widget _buildWebView(int index, String url) {
         },
       );
       _refreshChannelAdded[index] = true;
-      debugPrint(
-        '✅ Pull-to-refresh channel added for tab $index: $refreshChannelName',
-      );
+      debugPrint('✅ Refresh channel added for tab $index: $refreshChannelName');
     } catch (e) {
       debugPrint('❌ Error adding refresh channel for tab $index: $e');
       _refreshChannelAdded[index] = false;
+
+      // Retry with a new channel name
+      _refreshChannelNames[index] =
+          'MainScreenRefresh_${index}_retry_${DateTime.now().millisecondsSinceEpoch}';
+      debugPrint('🔄 Retrying with new channel name for tab $index');
     }
   }
 
-  // Only setup navigation delegate for index 0 or if not already set up
-  if (index == 0 || !_channelAdded.containsKey(index)) {
-    controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (String url) {
-          debugPrint('🔄 Page started loading for tab $index: $url');
-          if (mounted) {
-            setState(() {
-              _loadingStates[index] = true;
-              _isAtTopStates[index] = true;
-            });
-          }
-        },
-        onPageFinished: (String url) {
-          debugPrint('✅ Page finished loading for tab $index: $url');
-          
-          if (mounted) {
-            setState(() {
-              _loadingStates[index] = false;
-            });
-          }
-
-          // SIMPLIFIED: Only notify on the first tab (index 0) or currently selected tab
-          if (index == 0 || index == _selectedIndex) {
-            _notifyWebViewReady();
-          }
-
-          _injectScrollMonitoring(controller, index);
-
-          // Add native pull-to-refresh after page loads
-          Future.delayed(const Duration(milliseconds: 800), () {
-            _injectNativePullToRefresh(controller, index);
-          });
-          
-          // ADD: Inject background state handling
-          _injectBackgroundStateHandling(controller, index);
-        },
-        onWebResourceError: (WebResourceError error) {
-          debugPrint('❌ WebResource error for tab $index: ${error.description}');
-          if (mounted) {
-            setState(() {
-              _loadingStates[index] = false;
-            });
-          }
-          
-          // Even on error, notify if this is the first or current tab
-          if ((index == 0 || index == _selectedIndex) && !_hasNotifiedSplash) {
-            _notifyWebViewReady();
-          }
-        },
-        onNavigationRequest: (NavigationRequest request) {
-          WebViewService().updateController(controller, context);
-          return _handleNavigationRequest(request);
-        },
-      ),
-    );
-  }
-
-  return WebViewWidget(controller: controller);
-}void _injectBackgroundStateHandling(WebViewController controller, int index) {
-  controller.runJavaScript('''
+  void _injectBackgroundStateHandling(WebViewController controller, int index) {
+    controller.runJavaScript('''
     (function() {
       console.log('🔧 Setting up background state handling for tab $index');
       
@@ -575,11 +648,12 @@ Widget _buildWebView(int index, String url) {
       console.log('✅ Background state handling ready for tab $index');
     })();
   ''');
-}
+  }
+
   void _injectNativePullToRefresh(WebViewController controller, int index) {
     try {
       final refreshChannelName = _refreshChannelNames[index]!;
-      
+
       debugPrint('🔄 Using PullToRefreshService for main screen tab $index...');
 
       // Use the reusable service
@@ -641,12 +715,71 @@ Widget _buildWebView(int index, String url) {
     }
   }
 
+  void _injectScrollJavaScript(WebViewController controller, int index) {
+    controller.runJavaScript('''
+    (function() {
+      let isAtTop = true;
+      let scrollTimeout;
+      const channelName = 'ScrollMonitor_$index';
+      
+      function checkScrollPosition() {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const newIsAtTop = scrollTop <= 5;
+        
+        if (newIsAtTop !== isAtTop) {
+          isAtTop = newIsAtTop;
+          
+          if (window[channelName] && window[channelName].postMessage) {
+            window[channelName].postMessage(isAtTop.toString());
+          }
+        }
+      }
+      
+      function onScroll() {
+        if (scrollTimeout) {
+          clearTimeout(scrollTimeout);
+        }
+        scrollTimeout = setTimeout(checkScrollPosition, 50);
+      }
+      
+      // Remove existing listeners
+      window.removeEventListener('scroll', onScroll);
+      
+      // Add scroll listener
+      window.addEventListener('scroll', onScroll, { passive: true });
+      
+      // Initial check
+      setTimeout(checkScrollPosition, 100);
+      
+      console.log('✅ Scroll monitoring re-initialized for tab $index');
+    })();
+  ''');
+
+    // Add bottom margin for navigation bar
+    controller.runJavaScript('''
+    document.body.style.marginBottom = '85px';
+    document.body.style.boxSizing = 'border-box';
+    console.log('✅ Bottom margin added for tab $index navigation bar');
+  ''');
+
+    // Register with refresh manager
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
+    );
+    refreshManager.registerController(controller);
+    debugPrint('✅ Tab $index controller registered with RefreshStateManager');
+  }
+
   void _injectScrollMonitoring(WebViewController controller, int index) {
-    // FIXED: Check if channel is already added to prevent duplicate channel error
+    // ✅ FIXED: Always check if channel is already added
     if (_channelAdded[index] == true) {
       debugPrint(
-        '📍 JavaScript channel already added for tab $index, skipping...',
+        '📍 Scroll monitoring already set up for tab $index, updating JavaScript only...',
       );
+
+      // Just re-inject the JavaScript part
+      _injectScrollJavaScript(controller, index);
       return;
     }
 
@@ -667,71 +800,21 @@ Widget _buildWebView(int index, String url) {
               );
             }
           } catch (e) {
-            debugPrint('❌ Error parsing scroll message: $e');
+            debugPrint('❌ Error parsing scroll message for tab $index: $e');
           }
         },
       );
 
       // Mark channel as added
       _channelAdded[index] = true;
-      debugPrint('✅ JavaScript channel added for tab $index');
+      debugPrint('✅ Scroll channel added for tab $index');
 
-      // Then inject the monitoring script
-      controller.runJavaScript('''
-        (function() {
-          let isAtTop = true;
-          let scrollTimeout;
-          const channelName = 'ScrollMonitor_$index';
-          
-          function checkScrollPosition() {
-            const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-            const newIsAtTop = scrollTop <= 5; // Very small threshold
-            
-            if (newIsAtTop !== isAtTop) {
-              isAtTop = newIsAtTop;
-              
-              // Send to Flutter
-              if (window[channelName] && window[channelName].postMessage) {
-                window[channelName].postMessage(isAtTop.toString());
-              }
-            }
-          }
-          
-          // Optimized scroll listener
-          function onScroll() {
-            if (scrollTimeout) {
-              clearTimeout(scrollTimeout);
-            }
-            scrollTimeout = setTimeout(checkScrollPosition, 50);
-          }
-          
-          // Remove existing listeners
-          window.removeEventListener('scroll', onScroll);
-          
-          // Add scroll listener
-          window.addEventListener('scroll', onScroll, { passive: true });
-          
-          // Initial check
-          setTimeout(checkScrollPosition, 100);
-          
-          console.log('✅ Scroll monitoring initialized for tab $index');
-        })();
-      ''');
-
-      controller.runJavaScript('''
-        document.body.style.marginBottom = '85px';
-        document.body.style.boxSizing = 'border-box';
-        console.log('✅ Bottom margin added for navigation bar');
-      ''');
+      // Inject the JavaScript
+      _injectScrollJavaScript(controller, index);
     } catch (e) {
-      debugPrint('❌ Error adding JavaScript channel for tab $index: $e');
+      debugPrint('❌ Error adding scroll channel for tab $index: $e');
       _channelAdded[index] = false;
     }
-    final refreshManager = Provider.of<RefreshStateManager>(
-      context,
-      listen: false,
-    );
-    refreshManager.registerController(controller);
   }
 
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
@@ -834,14 +917,14 @@ Widget _buildWebView(int index, String url) {
 
   void _handleToastRequest(String url) {
     debugPrint('🍞 Toast requested from WebView: $url');
-    
+
     try {
       // Extract message from the URL
       String message = url.replaceFirst('toast://', '');
-      
+
       // Decode URL encoding if present
       message = Uri.decodeComponent(message);
-      
+
       // Show the toast message
       if (mounted && message.isNotEmpty) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
@@ -856,7 +939,7 @@ Widget _buildWebView(int index, String url) {
             ),
           ),
         );
-        
+
         debugPrint('✅ Toast shown: $message');
       } else {
         debugPrint('❌ Empty toast message');
@@ -970,7 +1053,11 @@ Widget _buildWebView(int index, String url) {
 
           // Use web scripts instead of native SnackBar
           if (mounted) {
-            final controller = _controllerManager.getController(_selectedIndex, '', context);
+            final controller = _controllerManager.getController(
+              _selectedIndex,
+              '',
+              context,
+            );
             controller.runJavaScript('''
               if (window.ToastManager) {
                 window.ToastManager.postMessage('toast://' + encodeURIComponent('Opening in browser...'));
@@ -996,7 +1083,11 @@ Widget _buildWebView(int index, String url) {
   // NEW: Add this helper method to show URL errors
   void _showUrlError(String message) {
     if (mounted) {
-      final controller = _controllerManager.getController(_selectedIndex, '', context);
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
       controller.runJavaScript('''
         const errorMessage = '$message';
         if (window.AlertManager) {
@@ -1296,7 +1387,11 @@ Widget _buildWebView(int index, String url) {
       debugPrint('✅ User logged out successfully');
 
       // Use web scripts instead of native SnackBar
-      final controller = _controllerManager.getController(_selectedIndex, '', context);
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
       controller.runJavaScript('''
         if (window.ToastManager) {
           window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
@@ -1316,7 +1411,11 @@ Widget _buildWebView(int index, String url) {
 
       // Use web scripts instead of native SnackBar
       if (mounted) {
-        final controller = _controllerManager.getController(_selectedIndex, '', context);
+        final controller = _controllerManager.getController(
+          _selectedIndex,
+          '',
+          context,
+        );
         controller.runJavaScript('''
           const errorMessage = 'Error during logout';
           if (window.AlertManager) {
@@ -1350,11 +1449,14 @@ Widget _buildWebView(int index, String url) {
   void _notifyAllControllersThemeChange(String themeMode) {
     // Get the current theme brightness
     final brightness = Theme.of(context).brightness;
-    final actualTheme = themeMode == 'system' 
-      ? (brightness == Brightness.dark ? 'dark' : 'light')
-      : themeMode;
+    final actualTheme =
+        themeMode == 'system'
+            ? (brightness == Brightness.dark ? 'dark' : 'light')
+            : themeMode;
 
-    debugPrint('🎨 Notifying all WebView controllers of theme change: $actualTheme');
+    debugPrint(
+      '🎨 Notifying all WebView controllers of theme change: $actualTheme',
+    );
 
     // Notify all active controllers
     for (int i = 0; i < (_configService.config?.mainIcons.length ?? 0); i++) {
@@ -1368,7 +1470,11 @@ Widget _buildWebView(int index, String url) {
   }
 
   // 3. Add this method to send theme updates to a specific controller:
-  void _sendThemeUpdateToController(WebViewController controller, String theme, int index) {
+  void _sendThemeUpdateToController(
+    WebViewController controller,
+    String theme,
+    int index,
+  ) {
     controller.runJavaScript('''
       try {
         console.log('🎨 Flutter theme change notification received: $theme for tab $index');
@@ -1513,66 +1619,87 @@ Widget _buildWebView(int index, String url) {
         title: item.title,
       );
     } else {
+      debugPrint('🔄 Switching to tab $index: ${item.title}');
+
       setState(() {
         _selectedIndex = index;
       });
 
-      // ✅ UPDATED: Ensure tab is initialized (for clicking non-preloaded tabs)
+      // ✅ FIXED: Always ensure the tab is properly initialized
       _ensureTabInitialized(index);
 
-      // Update WebViewService with the new active controller
+      // ✅ FIXED: Get the controller and ensure it's properly set up
+      final controller = _controllerManager.getController(
+        index,
+        item.link,
+        context,
+      );
+
+      // ✅ FIXED: Set up the controller if needed
+      _setupTabControllerForPullRefresh(controller, index);
+
+      // ✅ FIXED: Add refresh channel if needed
+      if (_refreshChannelAdded[index] != true) {
+        _addRefreshChannelSafely(controller, index);
+      }
+
+      // ✅ FIXED: Inject pull-to-refresh immediately if the page is already loaded
+      if (_loadingStates[index] == false) {
+        debugPrint(
+          '🔄 Tab $index already loaded, injecting pull-to-refresh immediately...',
+        );
+
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted && _selectedIndex == index) {
+            _injectScrollMonitoring(controller, index);
+            _injectNativePullToRefresh(controller, index);
+            debugPrint('✅ Pull-to-refresh injected for tab $index on switch');
+          }
+        });
+      }
+
+      // Update WebViewService with the active controller
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {
-          final controller = _controllerManager.getController(
-            index,
-            item.link, // ✅ Pass the correct URL here
-            context,
-          );
           WebViewService().updateController(controller, context);
+          debugPrint('✅ WebViewService updated for tab $index');
         }
       });
     }
   }
 
-  void _ensureTabInitialized(int index) {
-    if (!_loadingStates.containsKey(index)) {
-      debugPrint('🔧 Lazy initializing tab $index (clicked before preload)');
-      
-      _loadingStates[index] = true;
-      _isAtTopStates[index] = true;
-      _isRefreshingStates[index] = false;
-      _channelAdded[index] = false;
-      _refreshChannelAdded[index] = false;
-      _refreshChannelNames[index] = 
-          'MainScreenRefresh_${index}_${DateTime.now().millisecondsSinceEpoch}';
-    }
-  }
-void _handleLoginConfigRequest(String loginUrl) async {
-  debugPrint('🔗 Login config request received: $loginUrl');
-  
-  try {
-    final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
-    
-    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
-      final configUrl = parsedData['configUrl']!;
-      final userRole = parsedData['role'];
-      
-      debugPrint('✅ Processing config URL: $configUrl');
-      debugPrint('👤 User role: ${userRole ?? 'not specified'}');
-      
-      // 🆕 ENHANCED: Set dynamic config URL with context for better app data
-      await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
-      
-      // 🆕 NEW: Reload config immediately with current context for enhanced app data
-      if (mounted) {
-        debugPrint('🔄 Reloading configuration with MainScreen context...');
-        await ConfigService().loadConfig(context);
-        debugPrint('✅ Configuration reloaded with enhanced app data including user role');
-      }
-      
-      // Use web scripts for success feedback
-      final controller = _controllerManager.getController(_selectedIndex, '', context);
-      controller.runJavaScript('''
+  void _handleLoginConfigRequest(String loginUrl) async {
+    debugPrint('🔗 Login config request received: $loginUrl');
+
+    try {
+      final parsedData = ConfigService.parseLoginConfigUrl(loginUrl);
+
+      if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+        final configUrl = parsedData['configUrl']!;
+        final userRole = parsedData['role'];
+
+        debugPrint('✅ Processing config URL: $configUrl');
+        debugPrint('👤 User role: ${userRole ?? 'not specified'}');
+
+        // 🆕 ENHANCED: Set dynamic config URL with context for better app data
+        await ConfigService().setDynamicConfigUrl(configUrl, role: userRole);
+
+        // 🆕 NEW: Reload config immediately with current context for enhanced app data
+        if (mounted) {
+          debugPrint('🔄 Reloading configuration with MainScreen context...');
+          await ConfigService().loadConfig(context);
+          debugPrint(
+            '✅ Configuration reloaded with enhanced app data including user role',
+          );
+        }
+
+        // Use web scripts for success feedback
+        final controller = _controllerManager.getController(
+          _selectedIndex,
+          '',
+          context,
+        );
+        controller.runJavaScript('''
         const message = 'Configuration updated successfully with user role: ${userRole ?? 'default'}!';
         if (window.ToastManager) {
           window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
@@ -1580,12 +1707,15 @@ void _handleLoginConfigRequest(String loginUrl) async {
           window.location.href = 'toast://' + encodeURIComponent(message);
         }
       ''');
-      
-    } else {
-      debugPrint('❌ Failed to parse config URL');
-      
-      final controller = _controllerManager.getController(_selectedIndex, '', context);
-      controller.runJavaScript('''
+      } else {
+        debugPrint('❌ Failed to parse config URL');
+
+        final controller = _controllerManager.getController(
+          _selectedIndex,
+          '',
+          context,
+        );
+        controller.runJavaScript('''
         const errorMessage = 'Invalid configuration URL';
         if (window.AlertManager) {
           window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -1593,12 +1723,16 @@ void _handleLoginConfigRequest(String loginUrl) async {
           window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
       ''');
-    }
-  } catch (e) {
-    debugPrint('❌ Error handling login config request: $e');
-    
-    final controller = _controllerManager.getController(_selectedIndex, '', context);
-    controller.runJavaScript('''
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling login config request: $e');
+
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+      controller.runJavaScript('''
       const errorMessage = 'Error updating configuration: ${e.toString()}';
       if (window.AlertManager) {
         window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -1606,11 +1740,12 @@ void _handleLoginConfigRequest(String loginUrl) async {
         window.location.href = 'alert://' + encodeURIComponent(errorMessage);
       }
     ''');
+    }
   }
-}
+
   @override
   void dispose() {
-      WidgetsBinding.instance.removeObserver(this);
+    WidgetsBinding.instance.removeObserver(this);
 
     // Clear WebViewService controller reference
     WebViewService().clearCurrentController();

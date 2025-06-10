@@ -198,35 +198,35 @@ class WebViewService {
     return controller;
   }
 
-  void _handleToastRequest(String message) {
-    if (_currentContext == null) {
-      debugPrint('❌ No context available for toast request');
+void _handleToastRequest(String message) {
+  if (_currentContext == null) {
+    debugPrint('❌ No context available for toast request');
+    return;
+  }
+
+  if (!_currentContext!.mounted) {
+    debugPrint('❌ Context is no longer mounted for toast request');
+    return;
+  }
+
+  debugPrint('🍞 Processing toast request: $message');
+
+  try {
+    // Extract toast message from URL
+    String toastMessage = _extractToastMessage(message);
+
+    if (toastMessage.isEmpty) {
+      debugPrint('❌ Empty toast message');
       return;
     }
 
-    if (!_currentContext!.mounted) {
-      debugPrint('❌ Context is no longer mounted for toast request');
-      return;
-    }
-
-    debugPrint('🍞 Processing toast request: $message');
-
-    try {
-      // Extract toast message from URL
-      String toastMessage = _extractToastMessage(message);
-
-      if (toastMessage.isEmpty) {
-        debugPrint('❌ Empty toast message');
-        return;
-      }
-
-      // ✅ PURE WEB SCRIPT APPROACH - No native Flutter UI
-      if (_currentController != null) {
-        _currentController!.runJavaScript('''
+    // ✅ ENHANCED: Flutter SnackBar-style black toast with white font
+    if (_currentController != null) {
+      _currentController!.runJavaScript('''
         try {
           console.log('🍞 Toast message received in WebView: $toastMessage');
           
-          // Try to find and call web-based toast functions
+          // Try to find and call web-based toast functions first
           if (typeof showWebToast === 'function') {
             showWebToast('$toastMessage');
             console.log('✅ Called showWebToast() function');
@@ -237,70 +237,103 @@ class WebViewService {
             displayToast('$toastMessage');
             console.log('✅ Called displayToast() function');
           } else {
-            // Fallback: Create simple web toast
-            console.log('💡 No toast function found, creating simple web toast...');
+            // ✅ ENHANCED: Flutter SnackBar-style black toast
+            console.log('💡 Creating Flutter SnackBar-style black toast...');
             
             // Remove any existing toast
             var existingToast = document.getElementById('flutter-toast');
             if (existingToast) existingToast.remove();
             
-            // Create toast element
+            // Create toast container
             var toastDiv = document.createElement('div');
             toastDiv.id = 'flutter-toast';
             toastDiv.innerHTML = '$toastMessage';
+            
+            // ✅ Flutter SnackBar-style CSS - BLACK background with WHITE font
             toastDiv.style.cssText = \`
               position: fixed;
-              top: 20px;
-              left: 50%;
-              transform: translateX(-50%);
-              background: #2d5a2d;
-              color: white;
-              padding: 12px 24px;
+              bottom: 24px;
+              left: 16px;
+              right: 16px;
+              background: #323232;
+              color: #ffffff;
+              padding: 14px 16px;
               border-radius: 8px;
               z-index: 10000;
-              font-size: 14px;
-              font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-              animation: slideDown 0.3s ease-out;
+              font-size: 16px;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              font-weight: 400;
+              line-height: 1.4;
+              box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+              animation: slideUpAndFadeIn 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+              transform: translateY(0);
+              opacity: 1;
+              max-width: 600px;
+              margin: 0 auto;
+              word-wrap: break-word;
+              text-align: left;
             \`;
             
-            // Add CSS animation
-            if (!document.getElementById('toast-styles')) {
+            // Add enhanced CSS animations if not already present
+            if (!document.getElementById('flutter-toast-styles')) {
               var styles = document.createElement('style');
-              styles.id = 'toast-styles';
+              styles.id = 'flutter-toast-styles';
               styles.innerHTML = \`
-                @keyframes slideDown {
-                  from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
-                  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+                @keyframes slideUpAndFadeIn {
+                  from { 
+                    opacity: 0; 
+                    transform: translateY(100%); 
+                  }
+                  to { 
+                    opacity: 1; 
+                    transform: translateY(0); 
+                  }
                 }
-                @keyframes slideUp {
-                  from { opacity: 1; transform: translateX(-50%) translateY(0); }
-                  to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                @keyframes slideDownAndFadeOut {
+                  from { 
+                    opacity: 1; 
+                    transform: translateY(0); 
+                  }
+                  to { 
+                    opacity: 0; 
+                    transform: translateY(100%); 
+                  }
+                }
+                
+                #flutter-toast {
+                  /* Force white text even with external CSS */
+                  color: #ffffff !important;
+                  background: #323232 !important;
+                }
+                
+                #flutter-toast * {
+                  color: #ffffff !important;
                 }
               \`;
               document.head.appendChild(styles);
             }
             
+            // Add to page
             document.body.appendChild(toastDiv);
             
-            // Auto-remove after 3 seconds
+            // Auto-remove after 4 seconds with slide-out animation
             setTimeout(function() {
-              if (toastDiv) {
-                toastDiv.style.animation = 'slideUp 0.3s ease-out';
+              if (toastDiv && toastDiv.parentNode) {
+                toastDiv.style.animation = 'slideDownAndFadeOut 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)';
                 setTimeout(function() {
                   if (toastDiv && toastDiv.parentNode) {
                     toastDiv.parentNode.removeChild(toastDiv);
                   }
                 }, 300);
               }
-            }, 3000);
+            }, 4000);
             
-            console.log('✅ Web toast displayed: $toastMessage');
+            console.log('✅ Flutter SnackBar-style black toast displayed: $toastMessage');
           }
           
           // Dispatch toast event for any listeners
           var toastEvent = new CustomEvent('toastShown', { 
-            detail: { message: '$toastMessage' }
+            detail: { message: '$toastMessage', style: 'flutter-snackbar' }
           });
           document.dispatchEvent(toastEvent);
           
@@ -308,13 +341,13 @@ class WebViewService {
           console.error('❌ Error handling toast in WebView:', error);
         }
       ''');
-      }
-
-      debugPrint('✅ Toast processed via web scripts: $toastMessage');
-    } catch (e) {
-      debugPrint('❌ Error handling toast request: $e');
     }
+
+    debugPrint('✅ Enhanced black toast processed via web scripts: $toastMessage');
+  } catch (e) {
+    debugPrint('❌ Error handling toast request: $e');
   }
+}
 
   String _extractToastMessage(String url) {
     try {
@@ -2046,18 +2079,105 @@ class WebViewService {
       },
       
       // Toast System
-      showToast: function(message) {
-        console.log('🍞 Showing toast:', message);
-        if (window.ToastManager) {
-          if (typeof message === 'string' && message.trim()) {
-            window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
-          } else {
-            console.error('❌ Invalid toast message');
-          }
-        } else {
-          console.error('❌ ToastManager not available');
+    showToast: function(message) {
+  console.log('🍞 Showing enhanced black toast:', message);
+  if (window.ToastManager) {
+    if (typeof message === 'string' && message.trim()) {
+      window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+    } else {
+      console.error('❌ Invalid toast message');
+    }
+  } else {
+    console.log('💡 ToastManager not available, creating direct black toast...');
+    // Fallback: Create black toast directly
+    this.createBlackToast(message);
+  }
+},
+createBlackToast: function(message) {
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    console.error('❌ Invalid message for black toast');
+    return;
+  }
+  
+  try {
+    // Remove any existing toast
+    var existingToast = document.getElementById('flutter-toast');
+    if (existingToast) existingToast.remove();
+    
+    // Create toast container
+    var toastDiv = document.createElement('div');
+    toastDiv.id = 'flutter-toast';
+    toastDiv.innerHTML = message.trim();
+    
+    // Flutter SnackBar-style CSS - BLACK background with WHITE font
+    toastDiv.style.cssText = `
+      position: fixed;
+      bottom: 24px;
+      left: 16px;
+      right: 16px;
+      background: #323232;
+      color: #ffffff;
+      padding: 14px 16px;
+      border-radius: 8px;
+      z-index: 10000;
+      font-size: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-weight: 400;
+      line-height: 1.4;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+      animation: slideUpAndFadeIn 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+      transform: translateY(0);
+      opacity: 1;
+      max-width: 600px;
+      margin: 0 auto;
+      word-wrap: break-word;
+      text-align: left;
+    `;
+    
+    // Add CSS if not present
+    if (!document.getElementById('flutter-toast-styles')) {
+      var styles = document.createElement('style');
+      styles.id = 'flutter-toast-styles';
+      styles.innerHTML = `
+        @keyframes slideUpAndFadeIn {
+          from { opacity: 0; transform: translateY(100%); }
+          to { opacity: 1; transform: translateY(0); }
         }
-      },
+        @keyframes slideDownAndFadeOut {
+          from { opacity: 1; transform: translateY(0); }
+          to { opacity: 0; transform: translateY(100%); }
+        }
+        #flutter-toast {
+          color: #ffffff !important;
+          background: #323232 !important;
+        }
+        #flutter-toast * {
+          color: #ffffff !important;
+        }
+      `;
+      document.head.appendChild(styles);
+    }
+    
+    // Add to page
+    document.body.appendChild(toastDiv);
+    
+    // Auto-remove after 4 seconds
+    setTimeout(function() {
+      if (toastDiv && toastDiv.parentNode) {
+        toastDiv.style.animation = 'slideDownAndFadeOut 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)';
+        setTimeout(function() {
+          if (toastDiv && toastDiv.parentNode) {
+            toastDiv.parentNode.removeChild(toastDiv);
+          }
+        }, 300);
+      }
+    }, 4000);
+    
+    console.log('✅ Direct black toast created:', message);
+  } catch (error) {
+    console.error('❌ Error creating black toast:', error);
+  }
+},
       
       // Contact System - ENHANCED with getContacts support
       getAllContacts: function() {

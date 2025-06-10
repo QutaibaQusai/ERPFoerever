@@ -1,4 +1,3 @@
-// lib/services/pull_to_refresh_service.dart - FIXED: Main screen pull-to-refresh working consistently
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';

@@ -124,58 +124,68 @@ class _WebViewPageState extends State<WebViewPage> {
         },
       ),
     );
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-    try {
-      final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
-      refreshManager.registerController(_controller);
-      debugPrint('✅ WebViewPage controller registered with RefreshStateManager');
-    } catch (e) {
-      debugPrint('❌ Error registering WebViewPage controller: $e');
-    }
-  });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final refreshManager = Provider.of<RefreshStateManager>(
+          context,
+          listen: false,
+        );
+        refreshManager.registerController(_controller);
+        debugPrint(
+          '✅ WebViewPage controller registered with RefreshStateManager',
+        );
+      } catch (e) {
+        debugPrint('❌ Error registering WebViewPage controller: $e');
+      }
+    });
   }
-void _injectNativePullToRefresh() {
-  try {
-    debugPrint('🔄 Using PullToRefreshService for WebViewPage...');
 
-    // Use the reusable service
-    PullToRefreshService().injectNativePullToRefresh(
-      controller: _controller,
-      context: RefreshContext.webViewPage,
-      refreshChannelName: _refreshChannelName,
-      flutterContext: context, // Pass Flutter context for theme detection
+  void _injectNativePullToRefresh() {
+    try {
+      debugPrint('🔄 Using PullToRefreshService for WebViewPage...');
+
+      // Use the reusable service
+      PullToRefreshService().injectNativePullToRefresh(
+        controller: _controller,
+        context: RefreshContext.webViewPage,
+        refreshChannelName: _refreshChannelName,
+        flutterContext: context, // Pass Flutter context for theme detection
+      );
+
+      debugPrint('✅ PullToRefreshService injected for WebViewPage');
+    } catch (e) {
+      debugPrint('❌ Error injecting refresh for WebViewPage: $e');
+    }
+  }
+
+  // Simplified refresh handler
+  Future<void> _handleJavaScriptRefresh() async {
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
     );
 
-    debugPrint('✅ PullToRefreshService injected for WebViewPage');
-  } catch (e) {
-    debugPrint('❌ Error injecting refresh for WebViewPage: $e');
-  }
-}
-// Simplified refresh handler
-Future<void> _handleJavaScriptRefresh() async {
-  final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
-  
-  if (!refreshManager.shouldAllowRefresh()) {
-    debugPrint('🚫 Refresh blocked - sheet is open');
-    return;
+    if (!refreshManager.shouldAllowRefresh()) {
+      debugPrint('🚫 Refresh blocked - sheet is open');
+      return;
+    }
+
+    debugPrint('🔄 Processing refresh request...');
+
+    try {
+      // Just reload the page - keep it simple
+      await _controller.reload();
+
+      debugPrint('✅ Page reloaded successfully');
+    } catch (e) {
+      debugPrint('❌ Error reloading page: $e');
+    }
   }
 
-  debugPrint('🔄 Processing refresh request...');
+  void _reinjectWebViewServiceJS() {
+    debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewPage...');
 
-  try {
-    // Just reload the page - keep it simple
-    await _controller.reload();
-    
-    debugPrint('✅ Page reloaded successfully');
-    
-  } catch (e) {
-    debugPrint('❌ Error reloading page: $e');
-  }
-}
-void _reinjectWebViewServiceJS() {
-  debugPrint('💉 Re-injecting WebViewService JavaScript in WebViewPage...');
-
-  _controller.runJavaScript('''
+    _controller.runJavaScript('''
     console.log("🚀 ERPForever WebView JavaScript loading in WebViewPage...");
     
     // Enhanced click handler with full protocol support - SAME AS WebViewPage
@@ -683,24 +693,22 @@ void _reinjectWebViewServiceJS() {
     console.log("  - API: window.ERPForever.scanBarcode(), scanBarcodeContinuous(), scanBarcodeAuto(element)");
     console.log("🔄 WebViewPage Refresh Blocking: Initialized and ready");
   ''');
-}
- 
- 
- 
+  }
+
   NavigationDecision _handleNavigationRequest(NavigationRequest request) {
     debugPrint('🔍 Handling navigation in WebViewPage: ${request.url}');
 
     // PRIORITY: Handle toast requests FIRST
-  if (request.url.startsWith('toast://')) {
-    _handleToastRequest(request.url);
-    return NavigationDecision.prevent;
-  }
+    if (request.url.startsWith('toast://')) {
+      _handleToastRequest(request.url);
+      return NavigationDecision.prevent;
+    }
 
-  // PRIORITY: Handle external URLs with ?external=1 parameter
-  if (request.url.contains('?external=1')) {
-    _handleExternalNavigation(request.url);
-    return NavigationDecision.prevent;
-  }
+    // PRIORITY: Handle external URLs with ?external=1 parameter
+    if (request.url.contains('?external=1')) {
+      _handleExternalNavigation(request.url);
+      return NavigationDecision.prevent;
+    }
 
     // Handle new-web:// requests - PREVENT and open new WebView layer
     if (request.url.startsWith('new-web://')) {
@@ -783,46 +791,47 @@ void _reinjectWebViewServiceJS() {
 
   // Add this new method to WebViewPage
   Future<void> _launchInDefaultBrowser(String url) async {
-  try {
-    debugPrint('🌐 Opening URL in default browser: $url');
+    try {
+      debugPrint('🌐 Opening URL in default browser: $url');
 
-    final Uri uri = Uri.parse(url);
+      final Uri uri = Uri.parse(url);
 
-    if (await canLaunchUrl(uri)) {
-      final bool launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
+      if (await canLaunchUrl(uri)) {
+        final bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
 
-      if (launched) {
-        debugPrint('✅ Successfully opened URL in default browser');
+        if (launched) {
+          debugPrint('✅ Successfully opened URL in default browser');
 
-        // Use web scripts instead of native SnackBar
-        if (mounted) {
-          _controller.runJavaScript('''
+          // Use web scripts instead of native SnackBar
+          if (mounted) {
+            _controller.runJavaScript('''
             if (window.ToastManager) {
               window.ToastManager.postMessage('toast://' + encodeURIComponent('Opening in browser...'));
             } else {
               window.location.href = 'toast://' + encodeURIComponent('Opening in browser...');
             }
           ''');
+          }
+        } else {
+          debugPrint('❌ Failed to launch URL in browser');
+          _showUrlError('Could not open URL in browser');
         }
       } else {
-        debugPrint('❌ Failed to launch URL in browser');
-        _showUrlError('Could not open URL in browser');
+        debugPrint('❌ Cannot launch URL: $url');
+        _showUrlError('Cannot open this type of URL');
       }
-    } else {
-      debugPrint('❌ Cannot launch URL: $url');
-      _showUrlError('Cannot open this type of URL');
+    } catch (e) {
+      debugPrint('❌ Error launching URL in browser: $e');
+      _showUrlError('Failed to open browser: ${e.toString()}');
     }
-  } catch (e) {
-    debugPrint('❌ Error launching URL in browser: $e');
-    _showUrlError('Failed to open browser: ${e.toString()}');
   }
-}
-void _showUrlError(String message) {
-  if (mounted) {
-    _controller.runJavaScript('''
+
+  void _showUrlError(String message) {
+    if (mounted) {
+      _controller.runJavaScript('''
       const errorMessage = '$message';
       if (window.AlertManager) {
         window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -830,43 +839,44 @@ void _showUrlError(String message) {
         window.location.href = 'alert://' + encodeURIComponent(errorMessage);
       }
     ''');
-  }
-}
-  void _handleToastRequest(String url) {
-  debugPrint('🍞 Toast requested from WebView PAGE: $url');
-  
-  try {
-    // Extract message from the URL
-    String message = url.replaceFirst('toast://', '');
-    
-    // Decode URL encoding if present
-    message = Uri.decodeComponent(message);
-    
-    debugPrint('🍞 DECODED TOAST MESSAGE: "$message"');
-    
-    // Show the toast message
-    if (mounted && message.isNotEmpty) {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.green,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      );
-      
-      debugPrint('✅ Toast shown successfully: $message');
-    } else {
-      debugPrint('❌ Empty toast message');
     }
-  } catch (e) {
-    debugPrint('❌ Error handling toast request: $e');
   }
-}
+
+  void _handleToastRequest(String url) {
+    debugPrint('🍞 Toast requested from WebView PAGE: $url');
+
+    try {
+      // Extract message from the URL
+      String message = url.replaceFirst('toast://', '');
+
+      // Decode URL encoding if present
+      message = Uri.decodeComponent(message);
+
+      debugPrint('🍞 DECODED TOAST MESSAGE: "$message"');
+
+      // Show the toast message
+      if (mounted && message.isNotEmpty) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.green,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        );
+
+        debugPrint('✅ Toast shown successfully: $message');
+      } else {
+        debugPrint('❌ Empty toast message');
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling toast request: $e');
+    }
+  }
 
   void _handleNewWebNavigation(String url) {
     debugPrint('🌐 Opening new WebView layer from: $url');
@@ -1010,60 +1020,72 @@ void _showUrlError(String message) {
       body: _buildWebViewContent(isDarkMode),
     );
   }
-Widget _buildWebViewContent(bool isDarkMode) {
-  return Consumer<RefreshStateManager>(
-    builder: (context, refreshManager, child) {
-      // Cache the refresh state to avoid calling methods during build
-      final isRefreshAllowed = refreshManager.isRefreshEnabled;
-      
-      return RefreshIndicator(
-        // Only allow refresh when sheet is not open
-        onRefresh: isRefreshAllowed
-            ? _handleJavaScriptRefresh
-            : () async {
-                debugPrint('🚫 WebViewPage refresh blocked - sheet is open');
-                return;
-              },
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height -
-              kToolbarHeight -
-              MediaQuery.of(context).padding.top,
-          child: Stack(
-            children: [
-              WebViewWidget(controller: _controller),
-              if (_isLoading) LoadingWidget(message: "Loading..."),
-              // Show refresh indicator only when allowed
-              if (_isAtTop && !_isLoading && isRefreshAllowed)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(height: 2, color: Colors.transparent),
-                ),
-            ],
+
+  Widget _buildWebViewContent(bool isDarkMode) {
+    return Consumer<RefreshStateManager>(
+      builder: (context, refreshManager, child) {
+        // Cache the refresh state to avoid calling methods during build
+        final isRefreshAllowed = refreshManager.isRefreshEnabled;
+
+        return RefreshIndicator(
+          // Only allow refresh when sheet is not open
+          onRefresh:
+              isRefreshAllowed
+                  ? _handleJavaScriptRefresh
+                  : () async {
+                    debugPrint(
+                      '🚫 WebViewPage refresh blocked - sheet is open',
+                    );
+                    return;
+                  },
+          child: SizedBox(
+            height:
+                MediaQuery.of(context).size.height -
+                kToolbarHeight -
+                MediaQuery.of(context).padding.top,
+            child: Stack(
+              children: [
+                WebViewWidget(controller: _controller),
+                if (_isLoading) LoadingWidget(message: "Loading..."),
+                // Show refresh indicator only when allowed
+                if (_isAtTop && !_isLoading && isRefreshAllowed)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(height: 2, color: Colors.transparent),
+                  ),
+              ],
+            ),
           ),
-        ),
-      );
-    },
-  );
-}
-
-@override
-void dispose() {
-  debugPrint('🧹 WebViewPage disposing - popping controller from stack: $_pageId');
-
-  // ADD THIS: Unregister from RefreshStateManager
-  try {
-    final refreshManager = Provider.of<RefreshStateManager>(context, listen: false);
-    refreshManager.unregisterController(_controller);
-    debugPrint('✅ WebViewPage controller unregistered from RefreshStateManager');
-  } catch (e) {
-    debugPrint('❌ Error unregistering WebViewPage controller: $e');
+        );
+      },
+    );
   }
 
-  // Pop this specific controller from the stack
-  WebViewService().popController(_pageId);
+  @override
+  void dispose() {
+    debugPrint(
+      '🧹 WebViewPage disposing - popping controller from stack: $_pageId',
+    );
 
-  super.dispose();
-}
+    // ADD THIS: Unregister from RefreshStateManager
+    try {
+      final refreshManager = Provider.of<RefreshStateManager>(
+        context,
+        listen: false,
+      );
+      refreshManager.unregisterController(_controller);
+      debugPrint(
+        '✅ WebViewPage controller unregistered from RefreshStateManager',
+      );
+    } catch (e) {
+      debugPrint('❌ Error unregistering WebViewPage controller: $e');
+    }
+
+    // Pop this specific controller from the stack
+    WebViewService().popController(_pageId);
+
+    super.dispose();
+  }
 }

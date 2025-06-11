@@ -1,4 +1,3 @@
-// lib/models/main_icon_model.dart
 import 'package:ERPForever/models/header_icon_model.dart';
 
 class MainIconModel {
@@ -42,5 +41,24 @@ class MainIconModel {
       'link_type': linkType,
       'header_icons': headerIcons?.map((icon) => icon.toJson()).toList(),
     };
+  }
+
+  // 🆕 NEW: Add copyWith method
+  MainIconModel copyWith({
+    String? title,
+    String? iconLine,
+    String? iconSolid,
+    String? link,
+    String? linkType,
+    List<HeaderIconModel>? headerIcons,
+  }) {
+    return MainIconModel(
+      title: title ?? this.title,
+      iconLine: iconLine ?? this.iconLine,
+      iconSolid: iconSolid ?? this.iconSolid,
+      link: link ?? this.link,
+      linkType: linkType ?? this.linkType,
+      headerIcons: headerIcons ?? this.headerIcons,
+    );
   }
 }

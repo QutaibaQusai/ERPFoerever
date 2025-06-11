@@ -1,4 +1,4 @@
-// lib/models/header_icon_model.dart
+// lib/models/header_icon_model.dart - UPDATED: Added copyWith method
 class HeaderIconModel {
   final String title;
   final String icon;
@@ -28,5 +28,20 @@ class HeaderIconModel {
       'link': link,
       'link_type': linkType,
     };
+  }
+
+  // 🆕 NEW: Add copyWith method
+  HeaderIconModel copyWith({
+    String? title,
+    String? icon,
+    String? link,
+    String? linkType,
+  }) {
+    return HeaderIconModel(
+      title: title ?? this.title,
+      icon: icon ?? this.icon,
+      link: link ?? this.link,
+      linkType: linkType ?? this.linkType,
+    );
   }
 }

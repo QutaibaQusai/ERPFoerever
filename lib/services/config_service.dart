@@ -1,4 +1,4 @@
-// lib/services/config_service.dart - REPLACE YOUR ENTIRE FILE WITH THIS
+// lib/services/config_service.dart - COMPLETE REWRITE with User Role Processing
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ERPForever/models/app_config_model.dart';
 import 'package:ERPForever/models/theme_config_model.dart';
 import 'package:ERPForever/models/main_icon_model.dart';
+import 'package:ERPForever/models/header_icon_model.dart';
+import 'package:ERPForever/models/sheet_icon_model.dart';
 import 'package:ERPForever/services/app_data_service.dart';
 
 class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
@@ -39,6 +41,135 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
   String? get currentConfigUrl => _dynamicConfigUrl ?? _defaultRemoteConfigUrl;
   String? get userRole => _userRole;
 
+  /// 🆕 NEW: Process URLs in config to replace empty user-role with actual role
+  AppConfigModel _processConfigWithUserRole(
+    AppConfigModel config,
+    String? userRole,
+  ) {
+    if (userRole == null || userRole.isEmpty) {
+      debugPrint('⚠️ No user role to apply to config URLs');
+      return config;
+    }
+
+    debugPrint(
+      '🔄 Processing config URLs to replace empty user-role with: $userRole',
+    );
+
+    try {
+      // Process main icons
+      final updatedMainIcons =
+          config.mainIcons.map((icon) {
+            final updatedLink = _replaceEmptyUserRole(icon.link, userRole);
+
+            // Process header icons if they exist
+            List<HeaderIconModel>? updatedHeaderIcons;
+            if (icon.headerIcons != null) {
+              updatedHeaderIcons =
+                  icon.headerIcons!.map((headerIcon) {
+                    return HeaderIconModel(
+                      title: headerIcon.title,
+                      icon: headerIcon.icon,
+                      link: _replaceEmptyUserRole(headerIcon.link, userRole),
+                      linkType: headerIcon.linkType,
+                    );
+                  }).toList();
+            }
+
+            return MainIconModel(
+              title: icon.title,
+              iconLine: icon.iconLine,
+              iconSolid: icon.iconSolid,
+              link: updatedLink,
+              linkType: icon.linkType,
+              headerIcons: updatedHeaderIcons,
+            );
+          }).toList();
+
+      // Process sheet icons
+      final updatedSheetIcons =
+          config.sheetIcons.map((icon) {
+            final updatedLink = _replaceEmptyUserRole(icon.link, userRole);
+
+            // Process header icons if they exist
+            List<HeaderIconModel>? updatedHeaderIcons;
+            if (icon.headerIcons != null) {
+              updatedHeaderIcons =
+                  icon.headerIcons!.map((headerIcon) {
+                    return HeaderIconModel(
+                      title: headerIcon.title,
+                      icon: headerIcon.icon,
+                      link: _replaceEmptyUserRole(headerIcon.link, userRole),
+                      linkType: headerIcon.linkType,
+                    );
+                  }).toList();
+            }
+
+            return SheetIconModel(
+              title: icon.title,
+              iconLine: icon.iconLine,
+              iconSolid: icon.iconSolid,
+              link: updatedLink,
+              linkType: icon.linkType,
+              headerIcons: updatedHeaderIcons,
+            );
+          }).toList();
+
+      final updatedConfig = AppConfigModel(
+        lang: config.lang,
+        theme: config.theme,
+        mainIcons: updatedMainIcons,
+        sheetIcons: updatedSheetIcons,
+      );
+
+      debugPrint('✅ Config URLs processed successfully with user role');
+      return updatedConfig;
+    } catch (e) {
+      debugPrint('❌ Error processing config with user role: $e');
+      return config; // Return original config on error
+    }
+  }
+
+  /// Helper method to replace empty user-role parameter in URLs
+  String _replaceEmptyUserRole(String url, String userRole) {
+    try {
+      // Check if URL contains user-role parameter
+      if (!url.contains('user-role=')) {
+        return url; // No user-role parameter, return as-is
+      }
+
+      // Parse the URL
+      final uri = Uri.parse(url);
+      final queryParams = Map<String, String>.from(uri.queryParameters);
+
+      // Check if user-role exists and is empty
+      if (queryParams.containsKey('user-role')) {
+        final currentRole = queryParams['user-role'] ?? '';
+
+        if (currentRole.isEmpty) {
+          // Replace empty user-role with actual role
+          queryParams['user-role'] = userRole;
+
+          // Rebuild URL with updated parameters
+          final updatedUri = uri.replace(queryParameters: queryParams);
+          final updatedUrl = updatedUri.toString();
+
+          debugPrint('🔄 Updated URL: $url → $updatedUrl');
+          return updatedUrl;
+        } else {
+          debugPrint(
+            'ℹ️ URL already has user-role: $currentRole, keeping as-is',
+          );
+          return url; // Already has a role, keep it
+        }
+      }
+
+      return url; // No user-role parameter found
+    } catch (e) {
+      debugPrint('❌ Error processing URL $url: $e');
+      return url; // Return original URL on error
+    }
+  }
+
   /// Set dynamic configuration URL from login
   Future<void> setDynamicConfigUrl(String configUrl, {String? role}) async {
     try {
@@ -54,9 +185,9 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
         await prefs.setString(_userRoleKey, role);
       }
 
-      debugPrint(
-        '✅ Dynamic config URL saved and will be used for next config load',
-      );
+      debugPrint('✅ Dynamic config URL and role saved');
+
+      // 🆕 NEW: Reload config and process URLs with user role
       await loadConfig();
     } catch (e) {
       debugPrint('❌ Error setting dynamic config URL: $e');
@@ -82,7 +213,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
   /// Clear dynamic config URL (e.g., on logout)
   Future<void> clearDynamicConfigUrl() async {
     try {
-      debugPrint('🧹 Clearing dynamic config URL');
+      debugPrint('🧹 Clearing dynamic config URL and user role');
 
       _dynamicConfigUrl = null;
       _userRole = null;
@@ -91,13 +222,13 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
       await prefs.remove(_dynamicConfigUrlKey);
       await prefs.remove(_userRoleKey);
 
-      debugPrint('✅ Dynamic config URL cleared, will use default URL');
+      debugPrint('✅ Dynamic config URL and user role cleared');
     } catch (e) {
       debugPrint('❌ Error clearing dynamic config URL: $e');
     }
   }
 
-  /// 🆕 ENHANCED: Main method to load configuration with fallback strategy
+  /// 🆕 ENHANCED: Main method to load configuration with user role processing
   Future<void> loadConfig([BuildContext? context]) async {
     try {
       _isLoading = true;
@@ -108,11 +239,18 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
       await _loadSavedDynamicConfigUrl();
 
-      // Strategy 1: Try remote configuration first (with enhanced URL parameters)
+      // Strategy 1: Try remote configuration first
       bool remoteSuccess = await _tryLoadRemoteConfig(context);
 
       if (remoteSuccess) {
         debugPrint('✅ Remote configuration loaded successfully');
+
+        // 🆕 NEW: Process config with user role after loading
+        if (_config != null && _userRole != null) {
+          debugPrint('🔄 Processing config with user role: $_userRole');
+          _config = _processConfigWithUserRole(_config!, _userRole);
+        }
+
         await _cacheConfiguration();
         return;
       }
@@ -123,6 +261,13 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
       if (cacheSuccess) {
         debugPrint('✅ Cached configuration loaded successfully');
+
+        // 🆕 NEW: Process cached config with user role
+        if (_config != null && _userRole != null) {
+          debugPrint('🔄 Processing cached config with user role: $_userRole');
+          _config = _processConfigWithUserRole(_config!, _userRole);
+        }
+
         return;
       }
 
@@ -132,6 +277,13 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
       if (localSuccess) {
         debugPrint('✅ Local configuration loaded successfully');
+
+        // 🆕 NEW: Process local config with user role
+        if (_config != null && _userRole != null) {
+          debugPrint('🔄 Processing local config with user role: $_userRole');
+          _config = _processConfigWithUserRole(_config!, _userRole);
+        }
+
         return;
       }
 
@@ -385,7 +537,6 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // Keep all your existing methods (unchanged)...
   Future<bool> _tryLoadCachedConfig() async {
     try {
       debugPrint('💾 Checking cached configuration...');
@@ -495,6 +646,14 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     try {
       bool success = await _tryLoadRemoteConfig(context);
       if (success) {
+        // 🆕 NEW: Process config with user role after force reload
+        if (_config != null && _userRole != null) {
+          debugPrint(
+            '🔄 Processing force-reloaded config with user role: $_userRole',
+          );
+          _config = _processConfigWithUserRole(_config!, _userRole);
+        }
+
         await _cacheConfiguration();
         debugPrint('✅ Force remote reload successful');
       } else {
@@ -628,6 +787,14 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
           final success = await _tryLoadRemoteConfig(context);
           if (success) {
+            // 🆕 NEW: Process updated config with user role
+            if (_config != null && _userRole != null) {
+              debugPrint(
+                '🔄 Processing updated config with user role: $_userRole',
+              );
+              _config = _processConfigWithUserRole(_config!, _userRole);
+            }
+
             await _cacheConfiguration();
             debugPrint('✅ Configuration updated from remote');
             notifyListeners();

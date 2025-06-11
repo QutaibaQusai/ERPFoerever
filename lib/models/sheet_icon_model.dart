@@ -1,4 +1,3 @@
-// lib/models/sheet_icon_model.dart
 import 'package:ERPForever/models/header_icon_model.dart';
 
 class SheetIconModel {
@@ -25,11 +24,12 @@ class SheetIconModel {
       iconSolid: json['icon-solid'],
       link: json['link'],
       linkType: json['link_type'],
-      headerIcons: json['header_icons'] != null
-          ? (json['header_icons'] as List)
-              .map((icon) => HeaderIconModel.fromJson(icon))
-              .toList()
-          : null,
+      headerIcons:
+          json['header_icons'] != null
+              ? (json['header_icons'] as List)
+                  .map((icon) => HeaderIconModel.fromJson(icon))
+                  .toList()
+              : null,
     );
   }
 
@@ -42,5 +42,24 @@ class SheetIconModel {
       'link_type': linkType,
       'header_icons': headerIcons?.map((icon) => icon.toJson()).toList(),
     };
+  }
+
+  // 🆕 NEW: Add copyWith method
+  SheetIconModel copyWith({
+    String? title,
+    String? iconLine,
+    String? iconSolid,
+    String? link,
+    String? linkType,
+    List<HeaderIconModel>? headerIcons,
+  }) {
+    return SheetIconModel(
+      title: title ?? this.title,
+      iconLine: iconLine ?? this.iconLine,
+      iconSolid: iconSolid ?? this.iconSolid,
+      link: link ?? this.link,
+      linkType: linkType ?? this.linkType,
+      headerIcons: headerIcons ?? this.headerIcons,
+    );
   }
 }

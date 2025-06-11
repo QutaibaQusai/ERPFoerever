@@ -1,4 +1,4 @@
-// lib/services/auth_service.dart - Updated with config URL support
+// lib/services/auth_service.dart - UPDATED: Enhanced role processing
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ERPForever/services/config_service.dart';
@@ -34,90 +34,90 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// NEW: Login with optional config URL from loggedin:// protocol
- // lib/services/auth_service.dart - REPLACE THE login method with this:
-
-/// 🆕 ENHANCED: Login with optional config URL and context support
-Future<void> login({String? configUrl, BuildContext? context}) async {
-  try {
-    debugPrint('🔄 Attempting to save login state...');
-    if (configUrl != null) {
-      debugPrint('🔗 Login includes config URL: $configUrl');
-    }
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_isLoggedInKey, true);
-    
-    _isLoggedIn = true;
-    
-    // 🆕 ENHANCED: If config URL is provided, parse and set it with context
-    if (configUrl != null) {
-      await _handleConfigUrl(configUrl, context);
-    }
-    
-    notifyListeners();
-    
-    debugPrint('✅ User logged in and state saved to SharedPreferences');
-  } catch (e) {
-    debugPrint('❌ Error saving login state: $e');
-    _isLoggedIn = true;
-    notifyListeners();
-  }
-}
-Future<void> _handleConfigUrl(String configUrl, [BuildContext? context]) async {
-  try {
-    debugPrint('🔗 Processing config URL from login: $configUrl');
-    
-    final parsedData = ConfigService.parseLoginConfigUrl(configUrl);
-    
-    if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
-      final fullConfigUrl = parsedData['configUrl']!;
-      final userRole = parsedData['role'];
-      
-      debugPrint('✅ Setting dynamic config URL: $fullConfigUrl');
-      debugPrint('👤 User role: ${userRole ?? 'not specified'}');
-      
-      // 🆕 ENHANCED: Set the dynamic config URL with context for better app data
-      await ConfigService().setDynamicConfigUrl(
-        fullConfigUrl,
-        role: userRole,
-      );
-      
-      // 🆕 NEW: If context is available, reload config immediately with enhanced data
-      if (context != null) {
-        debugPrint('🔄 Reloading configuration with login context...');
-        await ConfigService().loadConfig(context);
-        debugPrint('✅ Configuration reloaded with enhanced app data');
+  /// 🆕 ENHANCED: Login with config URL and role preservation
+  Future<void> login({String? configUrl, BuildContext? context}) async {
+    try {
+      debugPrint('🔄 Processing login with enhanced role preservation...');
+      if (configUrl != null) {
+        debugPrint('🔗 Login includes config URL: $configUrl');
       }
       
-      debugPrint('🔄 Configuration updated with new URL and user role');
-    } else {
-      debugPrint('⚠️ Failed to parse config URL, using default configuration');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_isLoggedInKey, true);
+      
+      _isLoggedIn = true;
+      
+      // 🆕 ENHANCED: Process config URL with role preservation
+      if (configUrl != null) {
+        await _handleConfigUrlWithRolePreservation(configUrl, context);
+      }
+      
+      notifyListeners();
+      
+      debugPrint('✅ User logged in with role preservation completed');
+    } catch (e) {
+      debugPrint('❌ Error during enhanced login: $e');
+      _isLoggedIn = true;
+      notifyListeners();
     }
-  } catch (e) {
-    debugPrint('❌ Error handling config URL: $e');
   }
-}
-  /// Updated logout to clear dynamic config URL
+
+  /// 🆕 ENHANCED: Handle config URL with proper role preservation
+  Future<void> _handleConfigUrlWithRolePreservation(String configUrl, [BuildContext? context]) async {
+    try {
+      debugPrint('🔗 Processing config URL with role preservation: $configUrl');
+      
+      final parsedData = ConfigService.parseLoginConfigUrl(configUrl);
+      
+      if (parsedData.isNotEmpty && parsedData.containsKey('configUrl')) {
+        final fullConfigUrl = parsedData['configUrl']!;
+        final userRole = parsedData['role'];
+        
+        debugPrint('✅ Setting dynamic config URL: $fullConfigUrl');
+        debugPrint('👤 User role extracted: ${userRole ?? 'not specified'}');
+        
+        // 🆕 ENHANCED: Set the dynamic config URL with role
+        await ConfigService().setDynamicConfigUrl(
+          fullConfigUrl,
+          role: userRole,
+        );
+        
+        // 🆕 CRITICAL: Reload config immediately to process URLs with role
+        if (context != null) {
+          debugPrint('🔄 Reloading configuration with role processing...');
+          await ConfigService().loadConfig(context);
+          debugPrint('✅ Configuration reloaded with user role applied to URLs');
+        } else {
+          debugPrint('⚠️ No context provided, role will be applied on next config load');
+        }
+        
+        debugPrint('🎉 Login with role preservation completed successfully');
+      } else {
+        debugPrint('⚠️ Failed to parse config URL, using default configuration');
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling config URL with role preservation: $e');
+    }
+  }
+
+  /// Updated logout to clear dynamic config URL and role
   Future<void> logout() async {
     try {
-      debugPrint('🔄 Attempting to clear login state...');
+      debugPrint('🔄 Attempting to clear login state and user role...');
       
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_isLoggedInKey, false);
       
       _isLoggedIn = false;
       
-      // NEW: Clear dynamic config URL on logout
+      // Clear dynamic config URL and role on logout
       await ConfigService().clearDynamicConfigUrl();
       
       notifyListeners();
       
-      debugPrint('✅ User logged out and state cleared from SharedPreferences');
-      debugPrint('🧹 Dynamic config URL cleared, will use default');
+      debugPrint('✅ User logged out, state cleared, and role removed from URLs');
     } catch (e) {
       debugPrint('❌ Error clearing login state: $e');
-      // Even if SharedPreferences fails, we still logout the session
       _isLoggedIn = false;
       notifyListeners();
     }
@@ -128,20 +128,20 @@ Future<void> _handleConfigUrl(String configUrl, [BuildContext? context]) async {
     return _isLoggedIn;
   }
 
-  /// NEW: Method to manually set config URL (for testing or special cases)
+  /// Method to manually set config URL (for testing or special cases)
   Future<void> setUserConfigUrl(String configUrl, {String? role}) async {
     try {
-      debugPrint('🔗 Manually setting user config URL: $configUrl');
+      debugPrint('🔗 Manually setting user config URL with role: $configUrl');
       
       await ConfigService().setDynamicConfigUrl(configUrl, role: role);
       
-      debugPrint('✅ User config URL set successfully');
+      debugPrint('✅ User config URL and role set successfully');
     } catch (e) {
       debugPrint('❌ Error setting user config URL: $e');
     }
   }
 
-  /// NEW: Get current user's config URL and role
+  /// Get current user's config URL and role
   Map<String, String?> getUserConfigInfo() {
     final configService = ConfigService();
     return {

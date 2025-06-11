@@ -1,10 +1,10 @@
-// lib/models/app_config_model.dart
+// lib/models/app_config_model.dart - UPDATED: Added copyWith method
 import 'package:ERPForever/models/theme_config_model.dart';
 import 'package:ERPForever/models/main_icon_model.dart';
 import 'package:ERPForever/models/sheet_icon_model.dart';
 
 class AppConfigModel {
-  final String lang; // NEW: Language property
+  final String lang;
   final ThemeConfigModel theme;
   final List<MainIconModel> mainIcons;
   final List<SheetIconModel> sheetIcons;
@@ -18,7 +18,7 @@ class AppConfigModel {
 
   factory AppConfigModel.fromJson(Map<String, dynamic> json) {
     return AppConfigModel(
-      lang: json['lang'] ?? 'en', // Default to 'en' if not specified
+      lang: json['lang'] ?? 'en',
       theme: ThemeConfigModel.fromJson(json['theme']),
       mainIcons: (json['main_icons'] as List)
           .map((icon) => MainIconModel.fromJson(icon))
@@ -36,5 +36,20 @@ class AppConfigModel {
       'main_icons': mainIcons.map((icon) => icon.toJson()).toList(),
       'sheet_icons': sheetIcons.map((icon) => icon.toJson()).toList(),
     };
+  }
+
+  // 🆕 NEW: Add copyWith method
+  AppConfigModel copyWith({
+    String? lang,
+    ThemeConfigModel? theme,
+    List<MainIconModel>? mainIcons,
+    List<SheetIconModel>? sheetIcons,
+  }) {
+    return AppConfigModel(
+      lang: lang ?? this.lang,
+      theme: theme ?? this.theme,
+      mainIcons: mainIcons ?? this.mainIcons,
+      sheetIcons: sheetIcons ?? this.sheetIcons,
+    );
   }
 }

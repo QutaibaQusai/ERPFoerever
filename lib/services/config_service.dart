@@ -1,11 +1,9 @@
-// lib/services/config_service.dart - FIXED: Proper user role parameter handling
+// lib/services/config_service.dart - UPDATED: Always use remote URL, no local fallback
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ERPForever/models/app_config_model.dart';
-import 'package:ERPForever/models/theme_config_model.dart';
 import 'package:ERPForever/models/main_icon_model.dart';
 import 'package:ERPForever/models/header_icon_model.dart';
 import 'package:ERPForever/models/sheet_icon_model.dart';
@@ -18,9 +16,8 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
-  // Configuration URLs
+  // Configuration URLs - REMOVED local config path
   static const String _defaultRemoteConfigUrl = 'https://mobile.erpforever.com/config';
-  static const String _localConfigPath = 'assets/config.json';
   static const String _cacheKey = 'cached_config';
   static const String _cacheTimestampKey = 'config_cache_timestamp';
   static const String _dynamicConfigUrlKey = 'dynamic_config_url';
@@ -32,6 +29,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
   String? _error;
   String? _dynamicConfigUrl;
   String? _userRole;
+  bool _hasNetworkError = false; // NEW: Track network connectivity
 
   AppConfigModel? get config => _config;
   bool get isLoading => _isLoading;
@@ -39,6 +37,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
   String? get error => _error;
   String? get currentConfigUrl => _dynamicConfigUrl ?? _defaultRemoteConfigUrl;
   String? get userRole => _userRole;
+  bool get hasNetworkError => _hasNetworkError; // NEW: Expose network error state
 
   AppConfigModel _processConfigWithUserRole(AppConfigModel config, String? userRole) {
     if (userRole == null || userRole.trim().isEmpty) {
@@ -283,17 +282,20 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // UPDATED: Only try remote config, no fallbacks to local/default
   Future<void> loadConfig([BuildContext? context]) async {
     try {
       _isLoading = true;
       _error = null;
+      _hasNetworkError = false; // Reset network error state
       notifyListeners();
 
-      debugPrint('🔄 Starting configuration loading process...');
+      debugPrint('🔄 Starting configuration loading process (REMOTE ONLY)...');
       debugPrint('👤 Current stored user role: ${_userRole ?? 'none'}');
 
       await _loadSavedDynamicConfigUrl();
 
+      // ONLY try remote config - no fallbacks
       bool remoteSuccess = await _tryLoadRemoteConfig(context);
 
       if (remoteSuccess) {
@@ -311,40 +313,15 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
 
-      debugPrint('⚠️ Remote failed, trying cached configuration...');
-      bool cacheSuccess = await _tryLoadCachedConfig();
-
-      if (cacheSuccess) {
-        debugPrint('✅ Cached configuration loaded successfully');
-
-        if (_config != null && _userRole != null && _userRole!.isNotEmpty) {
-          debugPrint('🔄 Processing cached config with user role: $_userRole');
-          _config = _processConfigWithUserRole(_config!, _userRole);
-        }
-
-        return;
-      }
-
-      debugPrint('⚠️ Cache failed, trying local configuration...');
-      bool localSuccess = await _tryLoadLocalConfig();
-
-      if (localSuccess) {
-        debugPrint('✅ Local configuration loaded successfully');
-
-        if (_config != null && _userRole != null && _userRole!.isNotEmpty) {
-          debugPrint('🔄 Processing local config with user role: $_userRole');
-          _config = _processConfigWithUserRole(_config!, _userRole);
-        }
-
-        return;
-      }
-
-      debugPrint('⚠️ All sources failed, using default configuration...');
-      _loadDefaultConfig();
+      // If remote fails, set network error and don't load anything
+      debugPrint('❌ Remote configuration failed - showing network error');
+      _hasNetworkError = true;
+      _error = 'Unable to connect to configuration server. Please check your internet connection.';
+      
     } catch (e) {
-      _error = 'Failed to load configuration: $e';
       debugPrint('❌ Configuration loading error: $e');
-      _loadDefaultConfig();
+      _hasNetworkError = true;
+      _error = 'Failed to load configuration: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -372,7 +349,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
       final response = await http
           .get(Uri.parse(enhancedConfigUrl), headers: headers)
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 15)); // Increased timeout
 
       if (response.statusCode == 200) {
         final String configString = response.body;
@@ -498,54 +475,9 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     return headers;
   }
 
-  Future<bool> _tryLoadCachedConfig() async {
-    try {
-      debugPrint('💾 Checking cached configuration...');
-
-      final prefs = await SharedPreferences.getInstance();
-      final cachedConfig = prefs.getString(_cacheKey);
-      final cacheTimestamp = prefs.getInt(_cacheTimestampKey);
-
-      if (cachedConfig == null || cacheTimestamp == null) {
-        debugPrint('❌ No cached configuration found');
-        return false;
-      }
-
-      final cacheAge = DateTime.now().millisecondsSinceEpoch - cacheTimestamp;
-      final isExpired = cacheAge > _cacheExpiry.inMilliseconds;
-
-      if (isExpired) {
-        debugPrint('❌ Cached configuration expired (${Duration(milliseconds: cacheAge).inHours}h old)');
-        return false;
-      }
-
-      final Map<String, dynamic> configJson = json.decode(cachedConfig);
-      _config = AppConfigModel.fromJson(configJson);
-
-      debugPrint('✅ Cached configuration loaded (${Duration(milliseconds: cacheAge).inMinutes}m old)');
-      return true;
-    } catch (e) {
-      debugPrint('❌ Cached configuration error: $e');
-      return false;
-    }
-  }
-
-  Future<bool> _tryLoadLocalConfig() async {
-    try {
-      debugPrint('📱 Loading local configuration from assets...');
-
-      final String configString = await rootBundle.loadString(_localConfigPath);
-      final Map<String, dynamic> configJson = json.decode(configString);
-
-      _config = AppConfigModel.fromJson(configJson);
-
-      debugPrint('✅ Local configuration loaded successfully');
-      return true;
-    } catch (e) {
-      debugPrint('❌ Local configuration error: $e');
-      return false;
-    }
-  }
+  // REMOVED: _tryLoadCachedConfig method
+  // REMOVED: _tryLoadLocalConfig method
+  // REMOVED: _loadDefaultConfig method
 
   Future<void> _cacheConfiguration() async {
     try {
@@ -589,6 +521,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
     _isLoading = true;
     _error = null;
+    _hasNetworkError = false;
     notifyListeners();
 
     try {
@@ -603,6 +536,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
         await _cacheConfiguration();
         debugPrint('✅ Force remote reload successful');
       } else {
+        _hasNetworkError = true;
         _error = 'Failed to load remote configuration';
         debugPrint('❌ Force remote reload failed');
       }
@@ -615,6 +549,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
 
   void updateConfig(AppConfigModel newConfig) {
     _config = newConfig;
+    _hasNetworkError = false; // Clear network error if config is updated
     notifyListeners();
     debugPrint('🔄 Configuration updated at runtime');
     _cacheConfiguration();
@@ -642,31 +577,6 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       return {'hasCachedConfig': false, 'error': e.toString()};
     }
-  }
-
-  void _loadDefaultConfig() {
-    _config = AppConfigModel(
-      lang: 'en',
-      theme: ThemeConfigModel(
-        primaryColor: '#0078d7',
-        lightBackground: '#F5F5F5',
-        darkBackground: '#121212',
-        darkSurface: '#1E1E1E',
-        defaultMode: 'system',
-        direction: 'LTR',
-      ),
-      mainIcons: [
-        MainIconModel(
-          title: 'Home',
-          iconLine: 'https://cdn-icons-png.flaticon.com/128/1946/1946488.png',
-          iconSolid: 'https://cdn-icons-png.flaticon.com/128/1946/1946436.png',
-          link: 'https://mobile.erpforever.com/',
-          linkType: 'regular_webview',
-        ),
-      ],
-      sheetIcons: [],
-    );
-    debugPrint('⚠️ Using default configuration as fallback');
   }
 
   Color getColorFromHex(String hexColor) {

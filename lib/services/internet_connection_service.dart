@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
-class InternetConnectionService extends ChangeNotifier {
+class InternetConnectionService extends ChangeNotifier with WidgetsBindingObserver {
   static final InternetConnectionService _instance = InternetConnectionService._internal();
   factory InternetConnectionService() => _instance;
   InternetConnectionService._internal();
@@ -20,6 +20,9 @@ class InternetConnectionService extends ChangeNotifier {
   /// Initialize internet connection monitoring
   Future<void> initialize() async {
     try {
+      // Add app lifecycle observer
+      WidgetsBinding.instance.addObserver(this);
+      
       // Check initial connectivity
       await _checkInitialConnectivity();
       
@@ -29,6 +32,33 @@ class InternetConnectionService extends ChangeNotifier {
       debugPrint('🌐 InternetConnectionService initialized');
     } catch (e) {
       debugPrint('❌ Error initializing InternetConnectionService: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    if (state == AppLifecycleState.resumed) {
+      debugPrint('📱 App resumed - checking internet connection');
+      _checkConnectivityImmediately();
+    }
+  }
+
+  /// Immediately check connectivity (for app resume)
+  Future<void> _checkConnectivityImmediately() async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      
+      if (connectivityResult != ConnectivityResult.none) {
+        final hasInternet = await _hasInternetAccess();
+        _updateConnectionStatus(hasInternet);
+      } else {
+        _updateConnectionStatus(false);
+      }
+    } catch (e) {
+      debugPrint('❌ Error in immediate connectivity check: $e');
+      _updateConnectionStatus(false);
     }
   }
 
@@ -191,6 +221,7 @@ class InternetConnectionService extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _connectivitySubscription?.cancel();
     _retryTimer?.cancel();
     super.dispose();

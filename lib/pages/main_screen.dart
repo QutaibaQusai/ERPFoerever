@@ -1,5 +1,7 @@
 // lib/pages/main_screen.dart - UPDATED: Preload other tabs after splash
 import 'package:ERPForever/main.dart';
+import 'package:ERPForever/pages/no_internet_page.dart';
+import 'package:ERPForever/services/internet_connection_service.dart';
 import 'package:ERPForever/services/location_service.dart';
 import 'package:ERPForever/services/pull_to_refresh_service.dart';
 import 'package:flutter/material.dart';
@@ -197,27 +199,40 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
-  void _notifyWebViewReady() {
-    if (!_hasNotifiedSplash) {
-      _hasNotifiedSplash = true;
+void _notifyWebViewReady() {
+  if (!_hasNotifiedSplash) {
+    _hasNotifiedSplash = true;
 
-      try {
-        final splashManager = Provider.of<SplashStateManager>(
-          context,
-          listen: false,
-        );
+    try {
+      final splashManager = Provider.of<SplashStateManager>(
+        context,
+        listen: false,
+      );
+      
+      // NEW: Only notify if we have internet connection
+      final internetService = Provider.of<InternetConnectionService>(
+        context,
+        listen: false,
+      );
+      
+      if (internetService.isConnected) {
         splashManager.setWebViewReady();
         debugPrint(
           '🌐 MainScreen: Notified splash manager that WebView is ready',
         );
 
-        // 🆕 NEW: Start preloading other tabs after splash notification
+        // Start preloading other tabs after splash notification
         _startPreloadingOtherTabs();
-      } catch (e) {
-        debugPrint('❌ MainScreen: Error notifying splash manager: $e');
+      } else {
+        debugPrint(
+          '🚫 MainScreen: Skipping WebView ready notification - no internet',
+        );
       }
+    } catch (e) {
+      debugPrint('❌ MainScreen: Error notifying splash manager: $e');
     }
   }
+}
 
   void _startPreloadingOtherTabs() async {
     if (_hasStartedPreloading) return;
@@ -331,55 +346,59 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<ConfigService>(
-      builder: (context, configService, child) {
-        if (!configService.isLoaded) {
-          return const Scaffold(
-            body: Center(
-              child: LoadingWidget(message: "Loading configuration..."),
+@override
+Widget build(BuildContext context) {
+  return Consumer2<ConfigService, InternetConnectionService>(
+    builder: (context, configService, internetService, child) {
+      // NEW: If no internet, show no internet page
+      if (!internetService.isConnected) {
+        return const NoInternetPage();
+      }
+
+      if (!configService.isLoaded) {
+        return const Scaffold(
+          body: Center(
+            child: LoadingWidget(message: "Loading configuration..."),
+          ),
+        );
+      }
+
+      if (configService.error != null) {
+        return Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
+                const SizedBox(height: 16),
+                Text(
+                  'Configuration Error',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    configService.error!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => configService.reloadConfig(),
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
-          );
-        }
+          ),
+        );
+      }
 
-        if (configService.error != null) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Configuration Error',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      configService.error!,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => configService.reloadConfig(),
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return _buildMainScaffold(configService.config!);
-      },
-    );
-  }
-
+      return _buildMainScaffold(configService.config!);
+    },
+  );
+}
   Widget _buildMainScaffold(config) {
     return Scaffold(
       appBar: DynamicAppBar(selectedIndex: _selectedIndex),

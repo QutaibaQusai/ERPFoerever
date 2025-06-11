@@ -1,4 +1,4 @@
-// lib/main.dart - FIXED: Added missing initialization
+// lib/main.dart - COMPLETE: Enhanced with offline handling
 import 'package:ERPForever/services/refresh_state_manager.dart';
 import 'package:ERPForever/themes/dynamic_theme.dart';
 import 'package:ERPForever/widgets/connection_status_widget.dart';
@@ -11,6 +11,7 @@ import 'package:ERPForever/services/theme_service.dart';
 import 'package:ERPForever/services/auth_service.dart';
 import 'package:ERPForever/pages/main_screen.dart';
 import 'package:ERPForever/pages/login_page.dart';
+import 'package:ERPForever/pages/no_internet_page.dart';
 import 'package:ERPForever/services/internet_connection_service.dart';
 
 void main() async {
@@ -30,7 +31,7 @@ void main() async {
 
   await configService.loadConfig();
 
-  // 🔥 ADD THIS: Initialize internet connection monitoring
+  // 🔥 CRITICAL: Initialize internet connection monitoring FIRST
   await internetService.initialize();
   debugPrint('🌐 Internet connection service initialized');
 
@@ -54,6 +55,9 @@ void main() async {
   // Check authentication state
   final isLoggedIn = await authService.checkAuthState();
 
+  // 🌐 Log initial internet status
+  debugPrint('🌐 Initial internet status: ${internetService.isConnected}');
+
   runApp(
     MultiProvider(
       providers: [
@@ -64,7 +68,11 @@ void main() async {
         ChangeNotifierProvider(create: (_) => SplashStateManager()),
         ChangeNotifierProvider.value(value: internetService), 
       ],
-      child: MyApp(initialThemeMode: savedTheme, isLoggedIn: isLoggedIn),
+      child: MyApp(
+        initialThemeMode: savedTheme, 
+        isLoggedIn: isLoggedIn,
+        hasInternet: internetService.isConnected,
+      ),
     ),
   );
 }
@@ -73,6 +81,7 @@ class SplashStateManager extends ChangeNotifier {
   bool _isWebViewReady = false;
   bool _isMinTimeElapsed = false;
   bool _isSplashRemoved = false;
+  bool _hasInternet = true;  // 🆕 Track internet status
   late DateTime _startTime;
 
   SplashStateManager() {
@@ -81,6 +90,22 @@ class SplashStateManager extends ChangeNotifier {
   }
 
   bool get isSplashRemoved => _isSplashRemoved;
+
+  // 🆕 NEW: Method to update internet status
+  void setInternetStatus(bool hasInternet) {
+    _hasInternet = hasInternet;
+    debugPrint('🌐 Splash Manager - Internet status: ${hasInternet ? "CONNECTED" : "DISCONNECTED"}');
+    
+    if (!hasInternet) {
+      // If no internet, remove splash immediately after minimum time to show no internet page
+      debugPrint('🚫 No internet detected - will remove splash after minimum time');
+      _checkSplashRemoval();
+    } else {
+      // If internet is back, check if we should remove splash
+      debugPrint('✅ Internet connected - checking splash removal conditions');
+      _checkSplashRemoval();
+    }
+  }
 
   void _startMinTimeTimer() {
     Future.delayed(const Duration(seconds: 2), () {
@@ -99,12 +124,27 @@ class SplashStateManager extends ChangeNotifier {
   }
 
   void _checkSplashRemoval() {
-    if (_isMinTimeElapsed && _isWebViewReady && !_isSplashRemoved) {
+    // 🔧 LOGIC: Remove splash if:
+    // 1. Minimum time has elapsed AND
+    // 2. (WebView is ready OR we have no internet)
+    bool shouldRemove = _isMinTimeElapsed && 
+                       (_isWebViewReady || !_hasInternet) && 
+                       !_isSplashRemoved;
+    
+    debugPrint('🔍 Splash removal check:');
+    debugPrint('   - Min time elapsed: $_isMinTimeElapsed');
+    debugPrint('   - WebView ready: $_isWebViewReady');
+    debugPrint('   - Has internet: $_hasInternet');
+    debugPrint('   - Should remove: $shouldRemove');
+    
+    if (shouldRemove) {
       _removeSplash();
     }
   }
 
   void _removeSplash() {
+    if (_isSplashRemoved) return; // Prevent multiple calls
+    
     _isSplashRemoved = true;
 
     try {
@@ -120,19 +160,39 @@ class SplashStateManager extends ChangeNotifier {
 class MyApp extends StatelessWidget {
   final String initialThemeMode;
   final bool? isLoggedIn;
+  final bool hasInternet;
 
-  const MyApp({super.key, required this.initialThemeMode, this.isLoggedIn});
+  const MyApp({
+    super.key, 
+    required this.initialThemeMode, 
+    this.isLoggedIn,
+    required this.hasInternet,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Consumer3<ConfigService, ThemeService, AuthService>(
-      builder: (context, configService, themeService, authService, child) {
+    return Consumer4<ConfigService, ThemeService, AuthService, InternetConnectionService>(
+      builder: (context, configService, themeService, authService, internetService, child) {
+        // 🔧 CRITICAL: Monitor internet connection changes for splash management
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            try {
+              final splashManager = Provider.of<SplashStateManager>(context, listen: false);
+              splashManager.setInternetStatus(internetService.isConnected);
+            } catch (e) {
+              debugPrint('❌ Error updating splash manager with internet status: $e');
+            }
+          }
+        });
+
         final shouldShowMainScreen = isLoggedIn ?? authService.isLoggedIn;
         final textDirection = configService.getTextDirection();
 
-        // 🆕 NEW: Enhanced config loading with context after app is built
+        // 🆕 Enhanced config loading with context after app is built
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _enhanceConfigWithContext(context, configService);
+          if (context.mounted) {
+            _enhanceConfigWithContext(context, configService);
+          }
         });
 
         return Directionality(
@@ -144,8 +204,8 @@ class MyApp extends StatelessWidget {
             theme: DynamicTheme.buildLightTheme(configService.config),
             darkTheme: DynamicTheme.buildDarkTheme(configService.config),
             home: ScreenshotWrapper(
-              child: ConnectionStatusWidget( // 🆕 WRAP YOUR EXISTING CONTENT WITH THIS
-                child: shouldShowMainScreen ? const MainScreen() : const LoginPage(),
+              child: ConnectionStatusWidget(
+                child: _buildHomePage(internetService, shouldShowMainScreen),
               ),
             ),
             builder: (context, widget) {
@@ -160,20 +220,41 @@ class MyApp extends StatelessWidget {
     );
   }
 
-  /// 🆕 NEW: Add this method to the MyApp class
+  // 🆕 NEW: Build home page based on internet status
+  Widget _buildHomePage(InternetConnectionService internetService, bool shouldShowMainScreen) {
+    return Consumer<InternetConnectionService>(
+      builder: (context, connectionService, _) {
+        debugPrint('🏠 Building home page - Internet: ${connectionService.isConnected}, Should show main: $shouldShowMainScreen');
+        
+        // 🔧 PRIORITY: If no internet, always show no internet page
+        if (!connectionService.isConnected) {
+          debugPrint('🚫 No internet - showing NoInternetPage');
+          return const NoInternetPage();
+        }
+        
+        // 🔧 If internet is available, show appropriate page based on auth status
+        if (shouldShowMainScreen) {
+          debugPrint('✅ Internet available + logged in - showing MainScreen');
+          return const MainScreen();
+        } else {
+          debugPrint('✅ Internet available + not logged in - showing LoginPage');
+          return const LoginPage();
+        }
+      },
+    );
+  }
+
+  /// 🆕 Enhanced configuration loading with context for better app data
   void _enhanceConfigWithContext(
     BuildContext context,
     ConfigService configService,
   ) async {
     try {
-      debugPrint(
-        '🔧 Enhancing configuration with context for better app data...',
-      );
+      debugPrint('🔧 Enhancing configuration with context for better app data...');
 
       // Check if we need to reload with enhanced context
       final cacheStatus = await configService.getCacheStatus();
-      final cacheAgeMinutes =
-          (cacheStatus['cacheAge'] as int? ?? 0) / (1000 * 60);
+      final cacheAgeMinutes = (cacheStatus['cacheAge'] as int? ?? 0) / (1000 * 60);
 
       // Only reload if cache is older than 1 minute or if we haven't loaded with context yet
       if (cacheAgeMinutes > 1 || !configService.isLoaded) {

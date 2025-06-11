@@ -151,33 +151,29 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
             borderRadius: BorderRadius.circular(widget.isScrolling ? 25 : 30),
             child: BackdropFilter(
               filter: ImageFilter.blur(
-                sigmaX: 15,
-                sigmaY: 15,
-              ), // Lighter blur for more transparency
+                sigmaX: 8, // Reduced blur for more transparency
+                sigmaY: 8,
+              ),
               child: GlassmorphicContainer(
                 width: double.infinity,
                 height: _heightAnimation.value,
                 borderRadius: widget.isScrolling ? 25 : 30,
-                blur: 0, // Very light blur
+                blur: 0,
                 alignment: Alignment.bottomCenter,
-                border: 0.2, // Almost invisible border
+                border: 0.1, // Even more invisible border
                 linearGradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors:
                       isDarkMode
                           ? [
-                            Colors.white.withOpacity(
-                              0.02,
-                            ), // Almost completely transparent
-                            Colors.white.withOpacity(0.01),
+                            Colors.white.withOpacity(0.005), // Almost invisible
+                            Colors.white.withOpacity(0.003),
                             Colors.transparent,
                           ]
                           : [
-                            Colors.white.withOpacity(
-                              0.05,
-                            ), // Barely there white tint
-                            Colors.white.withOpacity(0.02),
+                            Colors.white.withOpacity(0.01), // Barely visible
+                            Colors.white.withOpacity(0.005),
                             Colors.transparent,
                           ],
                   stops: const [0.0, 0.5, 1.0],
@@ -188,13 +184,13 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
                   colors:
                       isDarkMode
                           ? [
-                            Colors.white.withOpacity(0.05),
                             Colors.white.withOpacity(0.02),
+                            Colors.white.withOpacity(0.01),
                             Colors.transparent,
                           ]
                           : [
-                            Colors.white.withOpacity(0.08),
                             Colors.white.withOpacity(0.03),
+                            Colors.white.withOpacity(0.015),
                             Colors.transparent,
                           ],
                 ),
@@ -203,14 +199,8 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
                     borderRadius: BorderRadius.circular(
                       widget.isScrolling ? 25 : 30,
                     ),
-                    // Almost no shadow for maximum transparency
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.01),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    // Remove shadow completely for maximum transparency
+                    // boxShadow: [], // Commented out for full transparency
                   ),
                   child: Opacity(
                     opacity: _opacityAnimation.value,

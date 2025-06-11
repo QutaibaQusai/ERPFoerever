@@ -44,7 +44,6 @@ class SheetIconModel {
     };
   }
 
-  // 🆕 NEW: Add copyWith method
   SheetIconModel copyWith({
     String? title,
     String? iconLine,

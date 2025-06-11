@@ -24,7 +24,8 @@ class DynamicBottomNavigation extends StatefulWidget {
   });
 
   @override
-  State<DynamicBottomNavigation> createState() => _DynamicBottomNavigationState();
+  State<DynamicBottomNavigation> createState() =>
+      _DynamicBottomNavigationState();
 }
 
 class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
@@ -32,11 +33,11 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
   late AnimationController _animationController;
   late Animation<double> _heightAnimation;
   late Animation<double> _opacityAnimation;
-  
+
   // Add splash animation controllers
   Map<int, AnimationController> _splashControllers = {};
   Map<int, Animation<double>> _splashAnimations = {};
-  
+
   // Tab transition animation
   late AnimationController _tabTransitionController;
   late Animation<double> _tabTransitionAnimation;
@@ -46,41 +47,32 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
   void initState() {
     super.initState();
     _previousSelectedIndex = widget.selectedIndex;
-    
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
-    _heightAnimation = Tween<double>(
-      begin: 90.0,
-      end: 60.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-    
-    _opacityAnimation = Tween<double>(
-      begin: 1.0,
-      end: 0.7,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-    
+
+    _heightAnimation = Tween<double>(begin: 90.0, end: 60.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    _opacityAnimation = Tween<double>(begin: 1.0, end: 0.7).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
     // Tab transition animation
     _tabTransitionController = AnimationController(
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
-    
-    _tabTransitionAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _tabTransitionController,
-      curve: Curves.easeInOutCubic,
-    ));
+
+    _tabTransitionAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _tabTransitionController,
+        curve: Curves.easeInOutCubic,
+      ),
+    );
   }
 
   @override
@@ -93,7 +85,7 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
         _animationController.reverse();
       }
     }
-    
+
     // Trigger tab transition animation when selectedIndex changes
     if (widget.selectedIndex != oldWidget.selectedIndex) {
       _previousSelectedIndex = oldWidget.selectedIndex;
@@ -120,15 +112,12 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
         duration: const Duration(milliseconds: 600),
         vsync: this,
       );
-      
+
       final animation = Tween<double>(
         begin: 0.0,
         end: 1.0,
-      ).animate(CurvedAnimation(
-        parent: controller,
-        curve: Curves.easeOutCirc,
-      ));
-      
+      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeOutCirc));
+
       _splashControllers[index] = controller;
       _splashAnimations[index] = animation;
     }
@@ -142,64 +131,106 @@ class _DynamicBottomNavigationState extends State<DynamicBottomNavigation>
     controller.forward();
   }
 
-@override
-Widget build(BuildContext context) {
-  final config = ConfigService().config;
-  if (config == null) return const SizedBox.shrink();
+  @override
+  Widget build(BuildContext context) {
+    final config = ConfigService().config;
+    if (config == null) return const SizedBox.shrink();
 
-  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-  return AnimatedBuilder(
-    animation: _animationController,
-    builder: (context, child) {
-      return Container(
-        height: _heightAnimation.value,
-        margin: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          bottom: widget.isScrolling ? 8 : 20,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(widget.isScrolling ? 25 : 30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // iOS-style blur
-            child: Container(
-              width: double.infinity,
-              height: _heightAnimation.value,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(widget.isScrolling ? 25 : 30),
-                // Very transparent to let background show through with blur
-                color: isDarkMode
-                    ? Colors.black.withOpacity(0.15) // Very light for transparency
-                    : Colors.white.withOpacity(0.25), // Very light for transparency
-                border: Border.all(
-                  color: isDarkMode
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
-                  width: 0.3,
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Container(
+          height: _heightAnimation.value,
+          margin: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: widget.isScrolling ? 8 : 20,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(widget.isScrolling ? 25 : 30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: 15,
+                sigmaY: 15,
+              ), // Lighter blur for more transparency
+              child: GlassmorphicContainer(
+                width: double.infinity,
+                height: _heightAnimation.value,
+                borderRadius: widget.isScrolling ? 25 : 30,
+                blur: 0, // Very light blur
+                alignment: Alignment.bottomCenter,
+                border: 0.2, // Almost invisible border
+                linearGradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors:
+                      isDarkMode
+                          ? [
+                            Colors.white.withOpacity(
+                              0.02,
+                            ), // Almost completely transparent
+                            Colors.white.withOpacity(0.01),
+                            Colors.transparent,
+                          ]
+                          : [
+                            Colors.white.withOpacity(
+                              0.05,
+                            ), // Barely there white tint
+                            Colors.white.withOpacity(0.02),
+                            Colors.transparent,
+                          ],
+                  stops: const [0.0, 0.5, 1.0],
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 15,
-                    offset: const Offset(0, 5),
+                borderGradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors:
+                      isDarkMode
+                          ? [
+                            Colors.white.withOpacity(0.05),
+                            Colors.white.withOpacity(0.02),
+                            Colors.transparent,
+                          ]
+                          : [
+                            Colors.white.withOpacity(0.08),
+                            Colors.white.withOpacity(0.03),
+                            Colors.transparent,
+                          ],
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(
+                      widget.isScrolling ? 25 : 30,
+                    ),
+                    // Almost no shadow for maximum transparency
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.01),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Opacity(
-                opacity: _opacityAnimation.value,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: _buildNavigationItems(context, config, isDarkMode),
+                  child: Opacity(
+                    opacity: _opacityAnimation.value,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: _buildNavigationItems(
+                        context,
+                        config,
+                        isDarkMode,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
 
   List<Widget> _buildNavigationItems(
     BuildContext context,
@@ -221,7 +252,7 @@ Widget build(BuildContext context) {
 
   Widget _buildNavItem(BuildContext context, int index, item, bool isDarkMode) {
     final isSelected = widget.selectedIndex == index;
-    
+
     // Create splash animation for this index
     _createSplashAnimation(index);
 
@@ -249,9 +280,10 @@ Widget build(BuildContext context) {
                     child: CustomPaint(
                       painter: SplashPainter(
                         progress: _splashAnimations[index]!.value,
-                        color: isDarkMode 
-                            ? Colors.white.withOpacity(0.3)
-                            : Colors.black.withOpacity(0.2),
+                        color:
+                            isDarkMode
+                                ? Colors.white.withOpacity(0.3)
+                                : Colors.black.withOpacity(0.2),
                       ),
                     ),
                   ),
@@ -283,9 +315,10 @@ Widget build(BuildContext context) {
                         isSelected: isSelected,
                         size: widget.isScrolling ? 20 : 24,
                         selectedColor: isDarkMode ? Colors.white : Colors.black,
-                        unselectedColor: isDarkMode 
-                            ? Colors.white.withOpacity(0.6) 
-                            : Colors.black.withOpacity(0.6),
+                        unselectedColor:
+                            isDarkMode
+                                ? Colors.white.withOpacity(0.6)
+                                : Colors.black.withOpacity(0.6),
                       ),
                     ),
                     if (!widget.isScrolling) ...[
@@ -297,12 +330,14 @@ Widget build(BuildContext context) {
                           item.title,
                           style: TextStyle(
                             fontSize: 11,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                            color: isSelected
-                                ? (isDarkMode ? Colors.white : Colors.black)
-                                : (isDarkMode 
-                                    ? Colors.white.withOpacity(0.7) 
-                                    : Colors.black.withOpacity(0.7)),
+                            fontWeight:
+                                isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color:
+                                isSelected
+                                    ? (isDarkMode ? Colors.white : Colors.black)
+                                    : (isDarkMode
+                                        ? Colors.white.withOpacity(0.7)
+                                        : Colors.black.withOpacity(0.7)),
                           ),
                         ),
                       ),
@@ -333,15 +368,16 @@ Widget build(BuildContext context) {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: isDarkMode
-                        ? [
-                            Colors.white.withOpacity(0.9),
-                            Colors.white.withOpacity(0.7),
-                          ]
-                        : [
-                            Colors.black.withOpacity(0.9),
-                            Colors.black.withOpacity(0.7),
-                          ],
+                    colors:
+                        isDarkMode
+                            ? [
+                              Colors.white.withOpacity(0.9),
+                              Colors.white.withOpacity(0.7),
+                            ]
+                            : [
+                              Colors.black.withOpacity(0.9),
+                              Colors.black.withOpacity(0.7),
+                            ],
                   ),
                   shape: BoxShape.circle,
                   boxShadow: [
@@ -378,116 +414,128 @@ Widget build(BuildContext context) {
       widget.onItemTapped(index);
     }
   }
-void _showAddOptions(BuildContext context) {
-  final config = ConfigService().config;
-  if (config == null || config.sheetIcons.isEmpty) return;
 
-  final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+  void _showAddOptions(BuildContext context) {
+    final config = ConfigService().config;
+    if (config == null || config.sheetIcons.isEmpty) return;
 
-  HapticFeedback.mediumImpact();
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
-  final refreshManager = Provider.of<RefreshStateManager>(
-    context,
-    listen: false,
-  );
-  refreshManager.setSheetOpen(true);
-  debugPrint(
-    '📋 DynamicBottomNavigation sheet opening - background refresh/scroll DISABLED',
-  );
+    HapticFeedback.mediumImpact();
 
-  showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    isDismissible: true,
-    enableDrag: true,
-    builder: (context) => ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Consistent blur
-        child: Container(
-          width: double.infinity,
-          height: MediaQuery.of(context).size.height * 0.5,
-          decoration: BoxDecoration(
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
+    );
+    refreshManager.setSheetOpen(true);
+    debugPrint(
+      '📋 DynamicBottomNavigation sheet opening - background refresh/scroll DISABLED',
+    );
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: true,
+      enableDrag: true,
+      builder:
+          (context) => ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-            // Very transparent to show background content
-            color: isDarkMode
-                ? Colors.black.withOpacity(0.2) // Very light
-                : Colors.white.withOpacity(0.3), // Very light
-            border: Border.all(
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.08)
-                  : Colors.black.withOpacity(0.05),
-              width: 0.3,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(top: 12),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: 20,
+                sigmaY: 20,
+              ), // Consistent blur
+              child: Container(
+                width: double.infinity,
+                height: MediaQuery.of(context).size.height * 0.5,
                 decoration: BoxDecoration(
-                  color: isDarkMode 
-                      ? Colors.white.withOpacity(0.5) 
-                      : Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              _buildSheetActionsGrid(context, config, isDarkMode),
-              const SizedBox(height: 30),
-              GestureDetector(
-                onTap: () {
-                  refreshManager.setSheetOpen(false);
-                  debugPrint(
-                    '📋 DynamicBottomNavigation sheet closing via close button - background refresh/scroll ENABLED',
-                  );
-                  Navigator.pop(context);
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(25),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: isDarkMode
-                            ? Colors.white.withOpacity(0.15)
-                            : Colors.black.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDarkMode
-                              ? Colors.white.withOpacity(0.2)
-                              : Colors.black.withOpacity(0.15),
-                          width: 0.3,
-                        ),
-                      ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        color: isDarkMode ? Colors.white : Colors.black,
-                        size: 24,
-                      ),
-                    ),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(30),
+                  ),
+                  // Very transparent to show background content
+                  color:
+                      isDarkMode
+                          ? Colors.black.withOpacity(0.2) // Very light
+                          : Colors.white.withOpacity(0.3), // Very light
+                  border: Border.all(
+                    color:
+                        isDarkMode
+                            ? Colors.white.withOpacity(0.08)
+                            : Colors.black.withOpacity(0.05),
+                    width: 0.3,
                   ),
                 ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle bar
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 12),
+                      decoration: BoxDecoration(
+                        color:
+                            isDarkMode
+                                ? Colors.white.withOpacity(0.5)
+                                : Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildSheetActionsGrid(context, config, isDarkMode),
+                    const SizedBox(height: 30),
+                    GestureDetector(
+                      onTap: () {
+                        refreshManager.setSheetOpen(false);
+                        debugPrint(
+                          '📋 DynamicBottomNavigation sheet closing via close button - background refresh/scroll ENABLED',
+                        );
+                        Navigator.pop(context);
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(25),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              color:
+                                  isDarkMode
+                                      ? Colors.white.withOpacity(0.15)
+                                      : Colors.black.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color:
+                                    isDarkMode
+                                        ? Colors.white.withOpacity(0.2)
+                                        : Colors.black.withOpacity(0.15),
+                                width: 0.3,
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: isDarkMode ? Colors.white : Colors.black,
+                              size: 24,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                  ],
+                ),
               ),
-              const SizedBox(height: 30),
-            ],
+            ),
           ),
-        ),
-      ),
-    ),
-  ).then((_) {
-    refreshManager.setSheetOpen(false);
-    debugPrint(
-      '📋 DynamicBottomNavigation sheet closed - background refresh/scroll ENABLED',
-    );
-  });
-}
-  
+    ).then((_) {
+      refreshManager.setSheetOpen(false);
+      debugPrint(
+        '📋 DynamicBottomNavigation sheet closed - background refresh/scroll ENABLED',
+      );
+    });
+  }
+
   Widget _buildSheetActionsGrid(BuildContext context, config, bool isDarkMode) {
     final sheetIcons = config.sheetIcons;
 
@@ -499,17 +547,18 @@ void _showAddOptions(BuildContext context) {
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: rowItems
-                .map<Widget>(
-                  (item) => Expanded(
-                    child: _buildDynamicActionButton(
-                      context,
-                      item,
-                      isDarkMode,
-                    ),
-                  ),
-                )
-                .toList(),
+            children:
+                rowItems
+                    .map<Widget>(
+                      (item) => Expanded(
+                        child: _buildDynamicActionButton(
+                          context,
+                          item,
+                          isDarkMode,
+                        ),
+                      ),
+                    )
+                    .toList(),
           ),
         ),
       );
@@ -517,84 +566,88 @@ void _showAddOptions(BuildContext context) {
 
     return Column(children: rows);
   }
-Widget _buildDynamicActionButton(
-  BuildContext context,
-  item,
-  bool isDarkMode,
-) {
-  return Column(
-    children: [
-      GestureDetector(
-        onTap: () {
-          final refreshManager = Provider.of<RefreshStateManager>(
-            context,
-            listen: false,
-          );
-          refreshManager.setSheetOpen(false);
-          debugPrint(
-            '📋 DynamicBottomNavigation sheet closing via action button - background refresh/scroll ENABLED',
-          );
 
-          Navigator.pop(context);
+  Widget _buildDynamicActionButton(
+    BuildContext context,
+    item,
+    bool isDarkMode,
+  ) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () {
+            final refreshManager = Provider.of<RefreshStateManager>(
+              context,
+              listen: false,
+            );
+            refreshManager.setSheetOpen(false);
+            debugPrint(
+              '📋 DynamicBottomNavigation sheet closing via action button - background refresh/scroll ENABLED',
+            );
 
-          WebViewService().navigate(
-            context,
-            url: item.link,
-            linkType: item.linkType,
-            title: item.title,
-          );
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-            child: Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: isDarkMode
-                    ? Colors.white.withOpacity(0.15)
-                    : Colors.black.withOpacity(0.1),
-                border: Border.all(
-                  color: isDarkMode
-                      ? Colors.white.withOpacity(0.2)
-                      : Colors.black.withOpacity(0.15),
-                  width: 0.5,
+            Navigator.pop(context);
+
+            WebViewService().navigate(
+              context,
+              url: item.link,
+              linkType: item.linkType,
+              title: item.title,
+            );
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              child: Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color:
+                      isDarkMode
+                          ? Colors.white.withOpacity(0.15)
+                          : Colors.black.withOpacity(0.1),
+                  border: Border.all(
+                    color:
+                        isDarkMode
+                            ? Colors.white.withOpacity(0.2)
+                            : Colors.black.withOpacity(0.15),
+                    width: 0.5,
+                  ),
                 ),
-              ),
-              child: Center(
-                child: DynamicIcon(
-                  iconUrl: item.iconSolid,
-                  size: 32,
-                  color: isDarkMode ? Colors.white : Colors.black,
-                  showLoading: false,
-                  fallbackIcon: Icon(
-                    _getIconForTitle(item.title),
-                    color: isDarkMode ? Colors.white : Colors.black,
+                child: Center(
+                  child: DynamicIcon(
+                    iconUrl: item.iconSolid,
                     size: 32,
+                    color: isDarkMode ? Colors.white : Colors.black,
+                    showLoading: false,
+                    fallbackIcon: Icon(
+                      _getIconForTitle(item.title),
+                      color: isDarkMode ? Colors.white : Colors.black,
+                      size: 32,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-      const SizedBox(height: 12),
-      Text(
-        item.title,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-          color: isDarkMode ? Colors.white : Colors.black,
+        const SizedBox(height: 12),
+        Text(
+          item.title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: isDarkMode ? Colors.white : Colors.black,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-    ],
-  );
-}
+      ],
+    );
+  }
+
   IconData _getIconForTitle(String title) {
     switch (title.toLowerCase()) {
       case 'status':
@@ -629,7 +682,7 @@ class SplashPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final maxRadius = size.width * 0.6;
     final currentRadius = maxRadius * progress;
-    
+
     // Create gradient for the ripple effect
     final gradient = RadialGradient(
       center: Alignment.center,
@@ -643,10 +696,11 @@ class SplashPainter extends CustomPainter {
       stops: const [0.0, 0.5, 0.8, 1.0],
     );
 
-    final paint = Paint()
-      ..shader = gradient.createShader(
-        Rect.fromCircle(center: center, radius: currentRadius),
-      );
+    final paint =
+        Paint()
+          ..shader = gradient.createShader(
+            Rect.fromCircle(center: center, radius: currentRadius),
+          );
 
     canvas.drawCircle(center, currentRadius, paint);
   }
@@ -681,21 +735,25 @@ class TabTransitionPainter extends CustomPainter {
     final itemWidth = size.width / itemCount;
     final indicatorWidth = itemWidth * 0.8;
     final indicatorHeight = isScrolling ? 35.0 : 45.0;
-    
+
     // Calculate positions
-    final previousX = (previousIndex * itemWidth) + (itemWidth - indicatorWidth) / 2;
-    final currentX = (currentIndex * itemWidth) + (itemWidth - indicatorWidth) / 2;
-    
+    final previousX =
+        (previousIndex * itemWidth) + (itemWidth - indicatorWidth) / 2;
+    final currentX =
+        (currentIndex * itemWidth) + (itemWidth - indicatorWidth) / 2;
+
     // Interpolate position
     final currentPosition = previousX + (currentX - previousX) * progress;
-    
+
     // Interpolate width for stretch effect
-    final stretchFactor = 1.0 + (0.3 * (1 - (2 * progress - 1).abs())); // Creates stretch in middle
+    final stretchFactor =
+        1.0 +
+        (0.3 * (1 - (2 * progress - 1).abs())); // Creates stretch in middle
     final currentWidth = indicatorWidth * stretchFactor;
-    
+
     // Center the stretched indicator
     final adjustedX = currentPosition - (currentWidth - indicatorWidth) / 2;
-    
+
     final rect = RRect.fromRectAndRadius(
       Rect.fromLTWH(
         adjustedX,
@@ -706,9 +764,10 @@ class TabTransitionPainter extends CustomPainter {
       Radius.circular(isScrolling ? 17 : 22),
     );
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
 
     canvas.drawRRect(rect, paint);
   }
@@ -716,9 +775,9 @@ class TabTransitionPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant TabTransitionPainter oldDelegate) {
     return oldDelegate.progress != progress ||
-           oldDelegate.previousIndex != previousIndex ||
-           oldDelegate.currentIndex != currentIndex ||
-           oldDelegate.itemCount != itemCount ||
-           oldDelegate.isScrolling != isScrolling;
+        oldDelegate.previousIndex != previousIndex ||
+        oldDelegate.currentIndex != currentIndex ||
+        oldDelegate.itemCount != itemCount ||
+        oldDelegate.isScrolling != isScrolling;
   }
 }

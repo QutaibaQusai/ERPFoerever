@@ -19,7 +19,6 @@ class DynamicAppBar extends StatefulWidget implements PreferredSizeWidget {
 }
 
 class _DynamicAppBarState extends State<DynamicAppBar> {
-
   @override
   Widget build(BuildContext context) {
     final config = ConfigService().config;
@@ -32,39 +31,49 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
 
     return ClipRRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Same as navigation
+        filter: ImageFilter.blur(
+          sigmaX: 15,
+          sigmaY: 15,
+        ), // Matching navigation bar blur
         child: Container(
           decoration: BoxDecoration(
-            // Pure transparency - only blur, no background color
+            // Pure transparency like navigation bar - no background color at all
             color: Colors.transparent,
-            border: Border(
-              bottom: BorderSide(
-                color: isDarkMode
-                    ? Colors.white.withOpacity(0.03)
-                    : Colors.black.withOpacity(0.02),
-                width: 0.2,
-              ),
-            ),
-            boxShadow: [], // Remove shadow completely
+            // Remove border completely for maximum transparency
+            border: null,
+            boxShadow: [], // No shadow for liquid glass effect
           ),
           child: AppBar(
             systemOverlayStyle: SystemUiOverlayStyle(
-              statusBarBrightness: isDarkMode ? Brightness.dark : Brightness.light,
+              statusBarBrightness:
+                  isDarkMode ? Brightness.dark : Brightness.light,
               statusBarColor: Colors.transparent,
             ),
             centerTitle: false,
             title: Padding(
               padding: const EdgeInsets.only(right: 10.0),
-              child: widget.selectedIndex == 0
-                  ? _buildUltraTransparentLogo(isDarkMode)
-                  : _buildUltraTransparentTitle(context, currentItem.title, isDarkMode),
+              child:
+                  widget.selectedIndex == 0
+                      ? _buildPureLiquidGlassLogo(isDarkMode)
+                      : _buildPureLiquidGlassTitle(
+                        context,
+                        currentItem.title,
+                        isDarkMode,
+                      ),
             ),
-            actions: _buildUltraTransparentActions(context, currentItem, isDarkMode),
+            actions: _buildPureLiquidGlassActions(
+              context,
+              currentItem,
+              isDarkMode,
+            ),
             backgroundColor: Colors.transparent,
             elevation: 0,
             scrolledUnderElevation: 0,
             iconTheme: IconThemeData(
-              color: isDarkMode ? Colors.white.withOpacity(0.9) : Colors.black.withOpacity(0.8),
+              color:
+                  isDarkMode
+                      ? Colors.white.withOpacity(0.9)
+                      : Colors.black.withOpacity(0.8),
             ),
             toolbarHeight: kToolbarHeight + 10,
             surfaceTintColor: Colors.transparent,
@@ -74,23 +83,47 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
     );
   }
 
-  Widget _buildUltraTransparentLogo(bool isDarkMode) {
+  Widget _buildPureLiquidGlassLogo(bool isDarkMode) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(
+          sigmaX: 15,
+          sigmaY: 15,
+        ), // Consistent with navigation
         child: Container(
           height: 36,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            // Pure transparency - only blur effect
-            color: Colors.transparent,
+            // Exact same transparency gradient as navigation bar
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors:
+                  isDarkMode
+                      ? [
+                        Colors.white.withOpacity(
+                          0.02,
+                        ), // Almost completely transparent
+                        Colors.white.withOpacity(0.01),
+                        Colors.transparent,
+                      ]
+                      : [
+                        Colors.white.withOpacity(
+                          0.05,
+                        ), // Barely there white tint
+                        Colors.white.withOpacity(0.02),
+                        Colors.transparent,
+                      ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
             border: Border.all(
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.03),
-              width: 0.2,
+              color:
+                  isDarkMode
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.white.withOpacity(0.08),
+              width: 0.2, // Almost invisible border like navigation
             ),
           ),
           child: Image.asset(
@@ -104,22 +137,50 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
     );
   }
 
-  Widget _buildUltraTransparentTitle(BuildContext context, String title, bool isDarkMode) {
+  Widget _buildPureLiquidGlassTitle(
+    BuildContext context,
+    String title,
+    bool isDarkMode,
+  ) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(
+          sigmaX: 15,
+          sigmaY: 15,
+        ), // Consistent with navigation
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            // Pure transparency - liquid glass effect
-            color: Colors.transparent,
+            // Exact same liquid glass gradient as navigation bar
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors:
+                  isDarkMode
+                      ? [
+                        Colors.white.withOpacity(
+                          0.02,
+                        ), // Almost completely transparent
+                        Colors.white.withOpacity(0.01),
+                        Colors.transparent,
+                      ]
+                      : [
+                        Colors.white.withOpacity(
+                          0.05,
+                        ), // Barely there white tint
+                        Colors.white.withOpacity(0.02),
+                        Colors.transparent,
+                      ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
             border: Border.all(
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.03),
-              width: 0.2,
+              color:
+                  isDarkMode
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.white.withOpacity(0.08),
+              width: 0.2, // Almost invisible border
             ),
           ),
           child: Text(
@@ -127,9 +188,10 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
             style: GoogleFonts.rubik(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.95)
-                  : Colors.black.withOpacity(0.85),
+              color:
+                  isDarkMode
+                      ? Colors.white.withOpacity(0.95)
+                      : Colors.black.withOpacity(0.85),
               letterSpacing: -0.3,
             ),
           ),
@@ -138,10 +200,15 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
     );
   }
 
-  List<Widget> _buildUltraTransparentActions(BuildContext context, currentItem, bool isDarkMode) {
+  List<Widget> _buildPureLiquidGlassActions(
+    BuildContext context,
+    currentItem,
+    bool isDarkMode,
+  ) {
     final List<Widget> actions = [];
 
-    if (currentItem.headerIcons != null && currentItem.headerIcons!.isNotEmpty) {
+    if (currentItem.headerIcons != null &&
+        currentItem.headerIcons!.isNotEmpty) {
       for (int i = 0; i < currentItem.headerIcons!.length; i++) {
         final headerIcon = currentItem.headerIcons![i];
         actions.add(
@@ -150,7 +217,7 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
               left: 6,
               right: i == currentItem.headerIcons!.length - 1 ? 12 : 0,
             ),
-            child: _buildUltraTransparentIconButton(
+            child: _buildPureLiquidGlassIconButton(
               context,
               headerIcon,
               isDarkMode,
@@ -163,23 +230,51 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
     return actions;
   }
 
-  Widget _buildUltraTransparentIconButton(BuildContext context, headerIcon, bool isDarkMode) {
+  Widget _buildPureLiquidGlassIconButton(
+    BuildContext context,
+    headerIcon,
+    bool isDarkMode,
+  ) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(
+          sigmaX: 15,
+          sigmaY: 15,
+        ), // Consistent with navigation
         child: Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            // Pure liquid glass - completely transparent
-            color: Colors.transparent,
+            // Pure liquid glass gradient matching navigation exactly
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors:
+                  isDarkMode
+                      ? [
+                        Colors.white.withOpacity(
+                          0.02,
+                        ), // Almost completely transparent
+                        Colors.white.withOpacity(0.01),
+                        Colors.transparent,
+                      ]
+                      : [
+                        Colors.white.withOpacity(
+                          0.05,
+                        ), // Barely there white tint
+                        Colors.white.withOpacity(0.02),
+                        Colors.transparent,
+                      ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
             border: Border.all(
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.04)
-                  : Colors.black.withOpacity(0.02),
-              width: 0.1, // Almost invisible borders
+              color:
+                  isDarkMode
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.white.withOpacity(0.08),
+              width: 0.2, // Almost invisible borders
             ),
           ),
           child: Material(
@@ -208,7 +303,7 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
   void _handleHeaderIconTap(BuildContext context, headerIcon) {
     // Same haptic feedback as navigation
     HapticFeedback.lightImpact();
-    
+
     WebViewService().navigate(
       context,
       url: headerIcon.link,
@@ -223,17 +318,12 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
     return AppBar(
       flexibleSpace: ClipRRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // Consistent blur
           child: Container(
             decoration: BoxDecoration(
-              // Pure transparency for liquid glass effect
+              // Pure transparency for liquid glass effect - no background at all
               color: Colors.transparent,
-              border: Border(
-                bottom: BorderSide(
-                  color: Colors.transparent, // Remove border
-                  width: 0,
-                ),
-              ),
+              border: null, // Remove border completely
             ),
           ),
         ),
@@ -241,18 +331,38 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
       title: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: isDarkMode
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.black.withOpacity(0.03),
+              // Same liquid glass gradient as navigation
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors:
+                    isDarkMode
+                        ? [
+                          Colors.white.withOpacity(
+                            0.02,
+                          ), // Almost completely transparent
+                          Colors.white.withOpacity(0.01),
+                          Colors.transparent,
+                        ]
+                        : [
+                          Colors.white.withOpacity(
+                            0.05,
+                          ), // Barely there white tint
+                          Colors.white.withOpacity(0.02),
+                          Colors.transparent,
+                        ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
               border: Border.all(
-                color: isDarkMode
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.black.withOpacity(0.05),
+                color:
+                    isDarkMode
+                        ? Colors.white.withOpacity(0.05)
+                        : Colors.white.withOpacity(0.08),
                 width: 0.2,
               ),
             ),
@@ -261,9 +371,10 @@ class _DynamicAppBarState extends State<DynamicAppBar> {
               style: GoogleFonts.rubik(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
-                color: isDarkMode
-                    ? Colors.white.withOpacity(0.95)
-                    : Colors.black.withOpacity(0.85),
+                color:
+                    isDarkMode
+                        ? Colors.white.withOpacity(0.95)
+                        : Colors.black.withOpacity(0.85),
                 letterSpacing: -0.3,
               ),
             ),

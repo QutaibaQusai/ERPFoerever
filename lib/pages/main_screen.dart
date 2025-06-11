@@ -1,5 +1,6 @@
 // lib/pages/main_screen.dart - UPDATED: Preload other tabs after splash
 import 'package:ERPForever/main.dart';
+import 'package:ERPForever/services/location_service.dart';
 import 'package:ERPForever/services/pull_to_refresh_service.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,6 +29,15 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
+
+        BuildContext? get _currentContext => mounted ? context : null;
+  WebViewController? get _currentController {
+    try {
+      return _controllerManager.getController(_selectedIndex, '', context);
+    } catch (e) {
+      return null;
+    }
+  }
   int _selectedIndex = 0;
   late ConfigService _configService;
   late WebViewControllerManager _controllerManager;
@@ -855,10 +865,11 @@ class _MainScreenState extends State<MainScreen>
     }
 
     // Location requests
-    if (request.url.startsWith('get-location://')) {
-      _handleLocationRequest();
-      return NavigationDecision.prevent;
-    }
+   // Location requests
+if (request.url.startsWith('get-location://')) {
+  _handleLocationRequest();
+  return NavigationDecision.prevent;
+}
 
     // Contacts requests
     if (request.url.startsWith('get-contacts')) {
@@ -915,40 +926,152 @@ class _MainScreenState extends State<MainScreen>
     return NavigationDecision.navigate;
   }
 
-  void _handleToastRequest(String url) {
-    debugPrint('🍞 Toast requested from WebView: $url');
+void _handleToastRequest(String url) {
+  debugPrint('🍞 Toast requested from WebView: $url');
 
-    try {
-      // Extract message from the URL
-      String message = url.replaceFirst('toast://', '');
+  try {
+    // Extract message from the URL
+    String message = url.replaceFirst('toast://', '');
 
-      // Decode URL encoding if present
-      message = Uri.decodeComponent(message);
+    // Decode URL encoding if present
+    message = Uri.decodeComponent(message);
 
-      // Show the toast message
-      if (mounted && message.isNotEmpty) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message),
-            duration: const Duration(seconds: 3),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Colors.green,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        );
+    // Show the toast message using web scripts (same as WebViewPage)
+    if (mounted && message.isNotEmpty) {
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+      
+      controller.runJavaScript('''
+        try {
+          console.log('🍞 Toast message received in MainScreen: $message');
+          
+          // Try to find and call web-based toast functions first
+          if (typeof showWebToast === 'function') {
+            showWebToast('$message');
+            console.log('✅ Called showWebToast() function');
+          } else if (typeof window.showToast === 'function') {
+            window.showToast('$message');
+            console.log('✅ Called window.showToast() function');
+          } else if (typeof displayToast === 'function') {
+            displayToast('$message');
+            console.log('✅ Called displayToast() function');
+          } else {
+            // ✅ ENHANCED: Flutter SnackBar-style black toast
+            console.log('💡 Creating Flutter SnackBar-style black toast...');
+            
+            // Remove any existing toast
+            var existingToast = document.getElementById('flutter-toast');
+            if (existingToast) existingToast.remove();
+            
+            // Create toast container
+            var toastDiv = document.createElement('div');
+            toastDiv.id = 'flutter-toast';
+            toastDiv.innerHTML = '$message';
+            
+            // ✅ Flutter SnackBar-style CSS - BLACK background with WHITE font
+            toastDiv.style.cssText = \`
+              position: fixed;
+              bottom: 24px;
+              left: 16px;
+              right: 16px;
+              background: #323232;
+              color: #ffffff;
+              padding: 14px 16px;
+              border-radius: 8px;
+              z-index: 10000;
+              font-size: 16px;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              font-weight: 400;
+              line-height: 1.4;
+              box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+              animation: slideUpAndFadeIn 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+              transform: translateY(0);
+              opacity: 1;
+              max-width: 600px;
+              margin: 0 auto;
+              word-wrap: break-word;
+              text-align: left;
+            \`;
+            
+            // Add enhanced CSS animations if not already present
+            if (!document.getElementById('flutter-toast-styles')) {
+              var styles = document.createElement('style');
+              styles.id = 'flutter-toast-styles';
+              styles.innerHTML = \`
+                @keyframes slideUpAndFadeIn {
+                  from { 
+                    opacity: 0; 
+                    transform: translateY(100%); 
+                  }
+                  to { 
+                    opacity: 1; 
+                    transform: translateY(0); 
+                  }
+                }
+                @keyframes slideDownAndFadeOut {
+                  from { 
+                    opacity: 1; 
+                    transform: translateY(0); 
+                  }
+                  to { 
+                    opacity: 0; 
+                    transform: translateY(100%); 
+                  }
+                }
+                
+                #flutter-toast {
+                  /* Force white text even with external CSS */
+                  color: #ffffff !important;
+                  background: #323232 !important;
+                }
+                
+                #flutter-toast * {
+                  color: #ffffff !important;
+                }
+              \`;
+              document.head.appendChild(styles);
+            }
+            
+            // Add to page
+            document.body.appendChild(toastDiv);
+            
+            // Auto-remove after 4 seconds with slide-out animation
+            setTimeout(function() {
+              if (toastDiv && toastDiv.parentNode) {
+                toastDiv.style.animation = 'slideDownAndFadeOut 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)';
+                setTimeout(function() {
+                  if (toastDiv && toastDiv.parentNode) {
+                    toastDiv.parentNode.removeChild(toastDiv);
+                  }
+                }, 300);
+              }
+            }, 4000);
+            
+            console.log('✅ Flutter SnackBar-style black toast displayed: $message');
+          }
+          
+          // Dispatch toast event for any listeners
+          var toastEvent = new CustomEvent('toastShown', { 
+            detail: { message: '$message', style: 'flutter-snackbar' }
+          });
+          document.dispatchEvent(toastEvent);
+          
+        } catch (error) {
+          console.error('❌ Error handling toast in WebView:', error);
+        }
+      ''');
 
-        debugPrint('✅ Toast shown: $message');
-      } else {
-        debugPrint('❌ Empty toast message');
-      }
-    } catch (e) {
-      debugPrint('❌ Error handling toast request: $e');
+      debugPrint('✅ Enhanced black toast processed via web scripts: $message');
+    } else {
+      debugPrint('❌ Empty toast message');
     }
+  } catch (e) {
+    debugPrint('❌ Error handling toast request: $e');
   }
-
+}
   void _handleContinuousBarcodeScanning(String url) {
     debugPrint("Continuous barcode scanning triggered: $url");
 
@@ -1268,184 +1391,189 @@ class _MainScreenState extends State<MainScreen>
     ''');
   }
 
-  void _handleLocationRequest() async {
-    debugPrint('🌍 Location requested from WebView');
+void _handleLocationRequest() async {
+  if (_currentContext == null || _currentController == null) {
+    debugPrint('❌ No context or controller available for location request');
+    return;
+  }
 
+  debugPrint('🌍 Processing location request silently...');
+
+  try {
+    // NO LOADING DIALOG - just process silently
+    Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
+    _sendLocationToWebView(locationResult);
+  } catch (e) {
+    debugPrint('❌ Error handling location request: $e');
+    _sendLocationToWebView({
+      'success': false,
+      'error': 'Failed to get location: ${e.toString()}',
+      'errorCode': 'UNKNOWN_ERROR',
+    });
+  }
+}
+void _sendLocationToWebView(Map<String, dynamic> locationData) {
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+
+  if (controller == null) {
+    debugPrint('❌ No WebView controller available for location result');
+    return;
+  }
+
+  debugPrint('📱 Sending location data to WebView');
+
+  final success = locationData['success'] ?? false;
+  final latitude = locationData['latitude'];
+  final longitude = locationData['longitude'];
+  final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
+  final errorCode = locationData['errorCode'] ?? '';
+
+  controller.runJavaScript('''
     try {
-      // Check location permission
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          debugPrint('❌ Location permissions denied');
-          _handleLocationError('Location permissions denied');
-          return;
+      console.log("📍 Location received: Success=$success");
+      
+      var locationResult = {
+        success: $success,
+        latitude: ${latitude ?? 'null'},
+        longitude: ${longitude ?? 'null'},
+        error: "$error",
+        errorCode: "$errorCode"
+      };
+      
+      // Try callback functions
+      if (typeof getLocationCallback === 'function') {
+        console.log("✅ Calling getLocationCallback()");
+        getLocationCallback($success, ${latitude ?? 'null'}, ${longitude ?? 'null'}, "$error", "$errorCode");
+      } else if (typeof window.handleLocationResult === 'function') {
+        console.log("✅ Calling window.handleLocationResult()");
+        window.handleLocationResult(locationResult);
+      } else if (typeof handleLocationResult === 'function') {
+        console.log("✅ Calling handleLocationResult()");
+        handleLocationResult(locationResult);
+      } else {
+        console.log("✅ Using fallback - triggering event");
+        
+        var event = new CustomEvent('locationReceived', { detail: locationResult });
+        document.dispatchEvent(event);
+      }
+      
+      // Use web scripts instead of native alerts
+      if ($success) {
+        const lat = ${latitude ?? 'null'};
+        const lng = ${longitude ?? 'null'};
+        const message = 'Location: ' + lat + ', ' + lng;
+        
+        if (window.ToastManager) {
+          window.ToastManager.postMessage('toast://' + encodeURIComponent(message));
+        } else {
+          window.location.href = 'toast://' + encodeURIComponent(message);
+        }
+      } else {
+        const errorMessage = 'Location Error: $error';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
+        } else {
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
       }
-
-      if (permission == LocationPermission.deniedForever) {
-        debugPrint('❌ Location permissions permanently denied');
-        _handleLocationError('Location permissions permanently denied');
-        return;
-      }
-
-      // Check if location services are enabled
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        debugPrint('❌ Location services are disabled');
-        _handleLocationError('Location services are disabled');
-        return;
-      }
-
-      debugPrint('📍 Getting current location...');
-
-      // Get current position
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 15),
-      );
-
-      debugPrint(
-        '✅ Location obtained: ${position.latitude}, ${position.longitude}',
-      );
-
-      // Call the result handler with the coordinates
-      _handleLocationResult(position.latitude, position.longitude);
-    } catch (e) {
-      debugPrint('❌ Error getting location: $e');
-      _handleLocationError('Failed to get location: ${e.toString()}');
+      
+    } catch (error) {
+      console.error("❌ Error handling location result:", error);
     }
-  }
+  ''');
+}
 
-  void _handleLocationResult(double latitude, double longitude) {
-    debugPrint("Location obtained: lat=$latitude, lng=$longitude");
-
-    final controller = _controllerManager.getController(
-      _selectedIndex,
-      '',
-      context,
-    );
-
-    controller.runJavaScript('''
-      if (typeof getLocation === 'function') {
-        getLocation($latitude, $longitude);
-        console.log("Called getLocation() with: lat=$latitude, lng=$longitude");
-      } else if (typeof window.handleLocationResult === 'function') {
-        window.handleLocationResult($latitude, $longitude);
-        console.log("Called handleLocationResult with: lat=$latitude, lng=$longitude");
-      } else {
-        var event = new CustomEvent('locationReceived', { 
-          detail: { 
-            latitude: $latitude, 
-            longitude: $longitude 
-          } 
-        });
-        document.dispatchEvent(event);
-        console.log("Dispatched locationReceived event");
-      }
-    ''');
-  }
-
-  void _handleLocationError(String error) {
-    debugPrint('❌ Location error: $error');
-
-    final controller = _controllerManager.getController(
-      _selectedIndex,
-      '',
-      context,
-    );
-
-    controller.runJavaScript('''
-      if (typeof getLocationError === 'function') {
-        getLocationError("$error");
-        console.log("Called getLocationError() with: $error");
-      } else if (typeof window.handleLocationError === 'function') {
-        window.handleLocationError("$error");
-        console.log("Called handleLocationError with: $error");
-      } else {
-        var event = new CustomEvent('locationError', { 
-          detail: { 
-            error: "$error" 
-          } 
-        });
-        document.dispatchEvent(event);
-        console.log("Dispatched locationError event");
-      }
-    ''');
-  }
 
   void _handleLogoutRequest() {
     debugPrint('🚪 Logout requested from WebView');
     _performLogout();
   }
 
-  void _performLogout() async {
-    try {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      await authService.logout();
+void _performLogout() async {
+  try {
+    final authService = Provider.of<AuthService>(context, listen: false);
+    await authService.logout();
 
-      debugPrint('✅ User logged out successfully');
+    debugPrint('✅ User logged out successfully');
 
-      // Use web scripts instead of native SnackBar
+    // Use web scripts instead of native SnackBar
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
+    controller.runJavaScript('''
+      if (window.ToastManager) {
+        window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
+      } else {
+        window.location.href = 'toast://' + encodeURIComponent('Logged out successfully');
+      }
+    ''');
+
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+        (route) => false,
+      );
+    }
+  } catch (e) {
+    debugPrint('❌ Error during logout: $e');
+
+    // Use web scripts instead of native SnackBar
+    if (mounted) {
       final controller = _controllerManager.getController(
         _selectedIndex,
         '',
         context,
       );
       controller.runJavaScript('''
-        if (window.ToastManager) {
-          window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
+        const errorMessage = 'Error during logout';
+        if (window.AlertManager) {
+          window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
         } else {
-          window.location.href = 'toast://' + encodeURIComponent('Logged out successfully');
+          window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
       ''');
-
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const LoginPage()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Error during logout: $e');
-
-      // Use web scripts instead of native SnackBar
-      if (mounted) {
-        final controller = _controllerManager.getController(
-          _selectedIndex,
-          '',
-          context,
-        );
-        controller.runJavaScript('''
-          const errorMessage = 'Error during logout';
-          if (window.AlertManager) {
-            window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
-          } else {
-            window.location.href = 'alert://' + encodeURIComponent(errorMessage);
-          }
-        ''');
-      }
     }
   }
+}
+void _handleThemeChangeRequest(String url) {
+  String themeMode = 'system';
 
-  void _handleThemeChangeRequest(String url) {
-    String themeMode = 'system';
-
-    if (url.startsWith('dark-mode://')) {
-      themeMode = 'dark';
-    } else if (url.startsWith('light-mode://')) {
-      themeMode = 'light';
-    } else if (url.startsWith('system-mode://')) {
-      themeMode = 'system';
-    }
-
-    final themeService = Provider.of<ThemeService>(context, listen: false);
-    themeService.updateThemeMode(themeMode);
-
-    // ✅ NEW: Notify ALL WebView controllers about theme change
-    _notifyAllControllersThemeChange(themeMode);
+  if (url.startsWith('dark-mode://')) {
+    themeMode = 'dark';
+  } else if (url.startsWith('light-mode://')) {
+    themeMode = 'light';
+  } else if (url.startsWith('system-mode://')) {
+    themeMode = 'system';
   }
 
+  final themeService = Provider.of<ThemeService>(context, listen: false);
+  themeService.updateThemeMode(themeMode);
+
+  // Use web scripts instead of native SnackBar (same as WebViewPage)
+  final message = 'Theme changed to ${themeMode.toUpperCase()} mode';
+  final controller = _controllerManager.getController(
+    _selectedIndex,
+    '',
+    context,
+  );
+  
+  controller.runJavaScript('''
+    if (window.ToastManager) {
+      window.ToastManager.postMessage('toast://' + encodeURIComponent('$message'));
+    } else {
+      window.location.href = 'toast://' + encodeURIComponent('$message');
+    }
+  ''');
+
+  // ✅ KEEP: Notify ALL WebView controllers about theme change
+  _notifyAllControllersThemeChange(themeMode);
+}
   void _notifyAllControllersThemeChange(String themeMode) {
     // Get the current theme brightness
     final brightness = Theme.of(context).brightness;
@@ -1469,45 +1597,44 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
-  // 3. Add this method to send theme updates to a specific controller:
-  void _sendThemeUpdateToController(
-    WebViewController controller,
-    String theme,
-    int index,
-  ) {
-    controller.runJavaScript('''
-      try {
-        console.log('🎨 Flutter theme change notification received: $theme for tab $index');
-        
-        // Update refresh indicator theme if it exists
-        if (typeof window.updateRefreshTheme === 'function') {
-          window.updateRefreshTheme('$theme');
-          console.log('✅ Refresh indicator theme updated to: $theme');
-        }
-        
-        // Call existing theme change handlers
-        if (typeof setDarkMode === 'function' && '$theme' === 'dark') {
-          setDarkMode();
-          console.log("Called setDarkMode()");
-        } else if (typeof setLightMode === 'function' && '$theme' === 'light') {
-          setLightMode();
-          console.log("Called setLightMode()");
-        } else if (typeof window.handleThemeChange === 'function') {
-          window.handleThemeChange('$theme');
-          console.log("Called handleThemeChange with: $theme");
-        } else {
-          var event = new CustomEvent('themeChanged', { 
-            detail: { theme: '$theme', source: 'flutter' } 
-          });
-          document.dispatchEvent(event);
-          console.log("Dispatched themeChanged event for $theme mode");
-        }
-        
-      } catch (error) {
-        console.error("❌ Error handling Flutter theme update:", error);
+ void _sendThemeUpdateToController(
+  WebViewController controller,
+  String theme,
+  int index,
+) {
+  controller.runJavaScript('''
+    try {
+      console.log('🎨 Flutter theme change notification received: $theme for tab $index');
+      
+      // Update refresh indicator theme if it exists
+      if (typeof window.updateRefreshTheme === 'function') {
+        window.updateRefreshTheme('$theme');
+        console.log('✅ Refresh indicator theme updated to: $theme');
       }
-    ''');
-  }
+      
+      // Call existing theme change handlers
+      if (typeof setDarkMode === 'function' && '$theme' === 'dark') {
+        setDarkMode();
+        console.log("Called setDarkMode()");
+      } else if (typeof setLightMode === 'function' && '$theme' === 'light') {
+        setLightMode();
+        console.log("Called setLightMode()");
+      } else if (typeof window.handleThemeChange === 'function') {
+        window.handleThemeChange('$theme');
+        console.log("Called handleThemeChange with: $theme");
+      } else {
+        var event = new CustomEvent('themeChanged', { 
+          detail: { theme: '$theme', source: 'flutter' } 
+        });
+        document.dispatchEvent(event);
+        console.log("Dispatched themeChanged event for $theme mode");
+      }
+      
+    } catch (error) {
+      console.error("❌ Error handling Flutter theme update:", error);
+    }
+  ''');
+}
 
   void _handleNewWebNavigation(String url) {
     // FIXED: Changed default URL to mobile.erpforever.com

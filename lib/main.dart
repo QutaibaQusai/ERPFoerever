@@ -1,6 +1,7 @@
-// lib/main.dart - Updated with splash screen management
+// lib/main.dart - FIXED: Added missing initialization
 import 'package:ERPForever/services/refresh_state_manager.dart';
 import 'package:ERPForever/themes/dynamic_theme.dart';
+import 'package:ERPForever/widgets/connection_status_widget.dart';
 import 'package:ERPForever/widgets/screenshot_wrapper.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import 'package:ERPForever/services/theme_service.dart';
 import 'package:ERPForever/services/auth_service.dart';
 import 'package:ERPForever/pages/main_screen.dart';
 import 'package:ERPForever/pages/login_page.dart';
+import 'package:ERPForever/services/internet_connection_service.dart';
 
 void main() async {
   // Preserve the native splash screen
@@ -19,13 +21,18 @@ void main() async {
   // Initialize services
   final configService = ConfigService();
   final themeService = ThemeService();
-  final authService = AuthService();
+  final authService = AuthService();  
+  final internetService = InternetConnectionService(); 
 
   // Load configuration
   debugPrint('🚀 ERPForever App Starting...');
   debugPrint('📡 Loading configuration from remote source...');
 
   await configService.loadConfig();
+
+  // 🔥 ADD THIS: Initialize internet connection monitoring
+  await internetService.initialize();
+  debugPrint('🌐 Internet connection service initialized');
 
   // Log configuration status
   final cacheStatus = await configService.getCacheStatus();
@@ -55,6 +62,7 @@ void main() async {
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider(create: (_) => RefreshStateManager()),
         ChangeNotifierProvider(create: (_) => SplashStateManager()),
+        ChangeNotifierProvider.value(value: internetService), 
       ],
       child: MyApp(initialThemeMode: savedTheme, isLoggedIn: isLoggedIn),
     ),
@@ -136,8 +144,9 @@ class MyApp extends StatelessWidget {
             theme: DynamicTheme.buildLightTheme(configService.config),
             darkTheme: DynamicTheme.buildDarkTheme(configService.config),
             home: ScreenshotWrapper(
-              child:
-                  shouldShowMainScreen ? const MainScreen() : const LoginPage(),
+              child: ConnectionStatusWidget( // 🆕 WRAP YOUR EXISTING CONTENT WITH THIS
+                child: shouldShowMainScreen ? const MainScreen() : const LoginPage(),
+              ),
             ),
             builder: (context, widget) {
               return Directionality(

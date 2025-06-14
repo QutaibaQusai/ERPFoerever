@@ -55,6 +55,8 @@ class _MainScreenState extends State<MainScreen>
   bool _hasNotifiedSplash = false;
 
   bool _hasStartedPreloading = false;
+  DateTime? _backgroundTime;
+  static const Duration _backgroundThreshold = Duration(minutes: 3);
 
   @override
   void initState() {
@@ -72,17 +74,105 @@ class _MainScreenState extends State<MainScreen>
 
     switch (state) {
       case AppLifecycleState.paused:
-        debugPrint('📱 App going to background - preserving WebView state');
+        debugPrint('📱 App going to background - recording timestamp');
+        _backgroundTime =
+            DateTime.now(); // 🆕 NEW: Record when app went to background
         _preserveWebViewState();
         break;
       case AppLifecycleState.resumed:
         debugPrint(
-          '📱 App resumed from background - checking if restoration needed',
+          '📱 App resumed from background - checking background duration',
         );
-        _checkAndRestoreIfNeeded();
+        _handleAppResume(); // 🆕 NEW: Handle resume with time-based logic
         break;
       default:
         break;
+    }
+  }
+
+  void _handleAppResume() {
+    if (_backgroundTime == null) {
+      debugPrint('⚠️ No background time recorded, skipping background checks');
+      return;
+    }
+
+    final backgroundDuration = DateTime.now().difference(_backgroundTime!);
+    debugPrint(
+      '⏱️ App was in background for: ${backgroundDuration.inMinutes} minutes ${backgroundDuration.inSeconds % 60} seconds',
+    );
+
+    if (backgroundDuration >= _backgroundThreshold) {
+      debugPrint(
+        '🔄 Background duration exceeded ${_backgroundThreshold.inMinutes} minutes - refreshing current tab',
+      );
+      _refreshAfterLongBackground();
+    } else {
+      debugPrint(
+        '✅ Background duration under ${_backgroundThreshold.inMinutes} minutes - preserving WebView state',
+      );
+      _restoreWebViewStateOnly();
+    }
+
+    // Reset background time
+    _backgroundTime = null;
+  }
+
+  Future<void> _refreshAfterLongBackground() async {
+    try {
+      debugPrint(
+        '🔄 Refreshing current tab $_selectedIndex after long background',
+      );
+
+      setState(() {
+        _loadingStates[_selectedIndex] = true;
+      });
+
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+      await controller.reload();
+
+      debugPrint('✅ Background refresh initiated for tab $_selectedIndex');
+    } catch (e) {
+      debugPrint('❌ Error refreshing after background: $e');
+      if (mounted) {
+        setState(() {
+          _loadingStates[_selectedIndex] = false;
+        });
+      }
+    }
+  }
+
+  // 🆕 NEW: Restore state without refresh for short background
+  void _restoreWebViewStateOnly() {
+    try {
+      debugPrint('📱 Restoring WebView state without refresh');
+
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+
+      // Just restore scroll position without refreshing
+      controller.runJavaScript('''
+        try {
+          if (window.savedAppState && window.savedAppState.scrollX !== undefined) {
+            setTimeout(() => {
+              window.scrollTo(window.savedAppState.scrollX, window.savedAppState.scrollY);
+              console.log('📍 Scroll position restored after short background');
+            }, 100);
+          }
+        } catch (error) {
+          console.error('❌ Error restoring scroll after short background:', error);
+        }
+      ''');
+
+      debugPrint('✅ WebView state restored without refresh');
+    } catch (e) {
+      debugPrint('❌ Error restoring WebView state: $e');
     }
   }
 
@@ -1933,12 +2023,22 @@ class _MainScreenState extends State<MainScreen>
         _selectedIndex = index;
       });
 
-      // Check if this tab needs refresh when accessed
+      // 🆕 UPDATED: Check if this tab needs refresh when accessed (only if we had a long background)
       Future.delayed(Duration(milliseconds: 100), () async {
-        final hasContent = await _checkWebViewHasContent(index);
-        if (!hasContent) {
-          debugPrint('🔄 Tab $index is empty - refreshing');
-          await _refreshTabAtIndex(index);
+        // Only check content if we had a long background session
+        if (_backgroundTime != null) {
+          final backgroundDuration = DateTime.now().difference(
+            _backgroundTime!,
+          );
+          if (backgroundDuration >= _backgroundThreshold) {
+            final hasContent = await _checkWebViewHasContent(index);
+            if (!hasContent) {
+              debugPrint(
+                '🔄 Tab $index is empty after long background - refreshing',
+              );
+              await _refreshTabAtIndex(index);
+            }
+          }
         }
       });
     }

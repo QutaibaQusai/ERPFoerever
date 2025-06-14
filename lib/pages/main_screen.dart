@@ -399,30 +399,17 @@ Widget build(BuildContext context) {
     },
   );
 }
-Widget _buildMainScaffold(config) {
-  return Scaffold(
-    appBar: DynamicAppBar(selectedIndex: _selectedIndex),
-    // Remove the bottomNavigationBar from here
-    // bottomNavigationBar: DynamicBottomNavigation(...), // DELETE THIS LINE
-    body: Stack(
-      children: [
-        // WebView takes full screen
-        _buildBody(config),
-        // Floating navigation bar positioned at bottom
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: DynamicBottomNavigation(
-            selectedIndex: _selectedIndex,
-            onItemTapped: _onItemTapped,
-          ),
-        ),
-      ],
-    ),
-    floatingActionButton: null,
-  );
-}
+  Widget _buildMainScaffold(config) {
+    return Scaffold(
+      appBar: DynamicAppBar(selectedIndex: _selectedIndex),
+      body: _buildBody(config),
+      bottomNavigationBar: DynamicBottomNavigation(
+        selectedIndex: _selectedIndex,
+        onItemTapped: _onItemTapped,
+      ),
+      floatingActionButton: null,
+    );
+  }
 
   Widget _buildBody(config) {
     if (config.mainIcons.isEmpty) {
@@ -432,44 +419,46 @@ Widget _buildMainScaffold(config) {
     // ✅ KEEP: Only build the currently selected tab content
     return _buildTabContent(_selectedIndex, config.mainIcons[_selectedIndex]);
   }
-Widget _buildTabContent(int index, mainIcon) {
-  if (mainIcon.linkType == 'sheet_webview') {
-    return const Center(child: Text('This tab opens as a sheet'));
+
+  Widget _buildTabContent(int index, mainIcon) {
+    if (mainIcon.linkType == 'sheet_webview') {
+      return const Center(child: Text('This tab opens as a sheet'));
+    }
+
+    return Consumer<RefreshStateManager>(
+      builder: (context, refreshManager, child) {
+        final isRefreshAllowed = refreshManager.isRefreshEnabled;
+
+        return RefreshIndicator(
+          onRefresh:
+              isRefreshAllowed
+                  ? () => _refreshWebView(index)
+                  : () async {
+                    debugPrint('🚫 Refresh blocked - sheet is open');
+                    return;
+                  },
+          child: Stack(
+            children: [
+              _buildWebView(index, mainIcon.link),
+              if (_loadingStates[index] == true ||
+                  _isRefreshingStates[index] == true)
+                const LoadingWidget(),
+              if (_isAtTopStates[index] == true &&
+                  _isRefreshingStates[index] == false &&
+                  isRefreshAllowed)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(height: 2, color: Colors.transparent),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
-  return Consumer<RefreshStateManager>(
-    builder: (context, refreshManager, child) {
-      final isRefreshAllowed = refreshManager.isRefreshEnabled;
-
-      return RefreshIndicator(
-        onRefresh: isRefreshAllowed
-            ? () => _refreshWebView(index)
-            : () async {
-                debugPrint('🚫 Refresh blocked - sheet is open');
-                return;
-              },
-        child: Stack(
-          children: [
-            // WebView now takes full height - no bottom margin needed
-            _buildWebView(index, mainIcon.link),
-            if (_loadingStates[index] == true ||
-                _isRefreshingStates[index] == true)
-              const LoadingWidget(),
-            if (_isAtTopStates[index] == true &&
-                _isRefreshingStates[index] == false &&
-                isRefreshAllowed)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Container(height: 2, color: Colors.transparent),
-              ),
-          ],
-        ),
-      );
-    },
-  );
-}
   Future<void> _refreshWebView(int index) async {
     final refreshManager = Provider.of<RefreshStateManager>(
       context,
@@ -755,8 +744,8 @@ Widget _buildTabContent(int index, mainIcon) {
     }
   }
 
- void _injectScrollJavaScript(WebViewController controller, int index) {
-  controller.runJavaScript('''
+  void _injectScrollJavaScript(WebViewController controller, int index) {
+    controller.runJavaScript('''
     (function() {
       let isAtTop = true;
       let scrollTimeout;
@@ -791,22 +780,25 @@ Widget _buildTabContent(int index, mainIcon) {
       // Initial check
       setTimeout(checkScrollPosition, 100);
       
-      console.log('✅ Scroll monitoring initialized for tab $index');
+      console.log('✅ Scroll monitoring re-initialized for tab $index');
     })();
-    
-    // REMOVED: Bottom margin since navigation is now floating
-    // The WebView content can now use the full screen height
-    console.log('✅ WebView optimized for floating navigation');
   ''');
 
-  // Register with refresh manager
-  final refreshManager = Provider.of<RefreshStateManager>(
-    context,
-    listen: false,
-  );
-  refreshManager.registerController(controller);
-  debugPrint('✅ Tab $index controller registered with RefreshStateManager');
-}
+    // Add bottom margin for navigation bar
+    controller.runJavaScript('''
+    document.body.style.marginBottom = '85px';
+    document.body.style.boxSizing = 'border-box';
+    console.log('✅ Bottom margin added for tab $index navigation bar');
+  ''');
+
+    // Register with refresh manager
+    final refreshManager = Provider.of<RefreshStateManager>(
+      context,
+      listen: false,
+    );
+    refreshManager.registerController(controller);
+    debugPrint('✅ Tab $index controller registered with RefreshStateManager');
+  }
 
   void _injectScrollMonitoring(WebViewController controller, int index) {
     // ✅ FIXED: Always check if channel is already added

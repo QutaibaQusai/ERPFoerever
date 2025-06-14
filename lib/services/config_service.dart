@@ -37,7 +37,7 @@ class ConfigService extends ChangeNotifier with WidgetsBindingObserver {
   String? get error => _error;
   String? get currentConfigUrl => _dynamicConfigUrl ?? _defaultRemoteConfigUrl;
   String? get userRole => _userRole;
-  bool get hasNetworkError => _hasNetworkError; // NEW: Expose network error state
+  bool get hasNetworkError => _hasNetworkError;
 
   AppConfigModel _processConfigWithUserRole(AppConfigModel config, String? userRole) {
     if (userRole == null || userRole.trim().isEmpty) {

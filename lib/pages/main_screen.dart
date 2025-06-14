@@ -1,4 +1,6 @@
 // lib/pages/main_screen.dart - UPDATED: Preload other tabs after splash
+import 'dart:convert';
+
 import 'package:ERPForever/main.dart';
 import 'package:ERPForever/pages/no_internet_page.dart';
 import 'package:ERPForever/services/internet_connection_service.dart';
@@ -31,8 +33,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
-
-        BuildContext? get _currentContext => mounted ? context : null;
+  BuildContext? get _currentContext => mounted ? context : null;
   WebViewController? get _currentController {
     try {
       return _controllerManager.getController(_selectedIndex, '', context);
@@ -40,6 +41,7 @@ class _MainScreenState extends State<MainScreen>
       return null;
     }
   }
+
   int _selectedIndex = 0;
   late ConfigService _configService;
   late WebViewControllerManager _controllerManager;
@@ -74,11 +76,167 @@ class _MainScreenState extends State<MainScreen>
         _preserveWebViewState();
         break;
       case AppLifecycleState.resumed:
-        debugPrint('📱 App resumed from background - restoring WebView state');
-        _restoreWebViewState();
+        debugPrint(
+          '📱 App resumed from background - checking if restoration needed',
+        );
+        _checkAndRestoreIfNeeded();
         break;
       default:
         break;
+    }
+  }
+
+  Future<void> _checkAndRestoreIfNeeded() async {
+    try {
+      // Small delay to ensure app is fully resumed
+      await Future.delayed(Duration(milliseconds: 500));
+
+      if (!mounted) return;
+
+      // Check if current WebView has content
+      final hasContent = await _checkWebViewHasContent(_selectedIndex);
+
+      if (!hasContent) {
+        debugPrint('🔄 WebView is empty - refreshing current tab');
+        await _refreshCurrentTab();
+      } else {
+        debugPrint('✅ WebView has content - no refresh needed');
+        // Just restore scroll position if content is there
+        _restoreScrollPosition(_selectedIndex);
+      }
+    } catch (e) {
+      debugPrint('❌ Error checking restoration need: $e');
+      // If check fails, refresh to be safe
+      await _refreshCurrentTab();
+    }
+  }
+
+  Future<bool> _checkWebViewHasContent(int tabIndex) async {
+    try {
+      final controller = _controllerManager.getController(
+        tabIndex,
+        '',
+        context,
+      );
+
+      final result = await controller.runJavaScriptReturningResult('''
+      (function() {
+        try {
+          // Check multiple indicators of content presence
+          const hasBody = document.body !== null;
+          const hasChildren = document.body && document.body.children.length > 0;
+          const hasText = document.body && document.body.innerText.trim().length > 0;
+          const isNotBlank = !document.body.innerHTML.includes('about:blank');
+          const hasScripts = typeof window.ERPForever !== 'undefined';
+          
+          // Consider content present if we have DOM elements and text
+          const hasContent = hasBody && hasChildren && (hasText || hasScripts) && isNotBlank;
+          
+          return JSON.stringify({
+            hasContent: hasContent,
+            childrenCount: hasChildren ? document.body.children.length : 0,
+            textLength: hasText ? document.body.innerText.length : 0,
+            hasScripts: hasScripts,
+            url: window.location.href
+          });
+        } catch (error) {
+          return JSON.stringify({hasContent: false, error: error.toString()});
+        }
+      })();
+    ''');
+
+      if (result != null) {
+        final data = jsonDecode(result.toString());
+        final hasContent = data['hasContent'] == true;
+
+        debugPrint(
+          '📊 Content check for tab $tabIndex: $hasContent (children: ${data['childrenCount']}, text: ${data['textLength']})',
+        );
+
+        return hasContent;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('❌ Error checking content: $e');
+      return false; // Assume no content if check fails
+    }
+  }
+
+  Future<void> _refreshCurrentTab() async {
+    try {
+      debugPrint('🔄 Refreshing current tab $_selectedIndex');
+
+      setState(() {
+        _loadingStates[_selectedIndex] = true;
+      });
+
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+      await controller.reload();
+
+      // Loading state will be updated by the navigation delegate
+      debugPrint('✅ Tab refresh initiated');
+    } catch (e) {
+      debugPrint('❌ Error refreshing tab: $e');
+      if (mounted) {
+        setState(() {
+          _loadingStates[_selectedIndex] = false;
+        });
+      }
+    }
+  }
+
+  void _restoreScrollPosition(int tabIndex) {
+    try {
+      final controller = _controllerManager.getController(
+        tabIndex,
+        '',
+        context,
+      );
+
+      controller.runJavaScript('''
+      try {
+        if (window.savedAppState && window.savedAppState.scrollX !== undefined) {
+          // Small delay to ensure page is ready
+          setTimeout(() => {
+            window.scrollTo(window.savedAppState.scrollX, window.savedAppState.scrollY);
+            console.log('📍 Scroll position restored:', window.savedAppState.scrollX, window.savedAppState.scrollY);
+          }, 300);
+        }
+      } catch (error) {
+        console.error('❌ Error restoring scroll:', error);
+      }
+    ''');
+    } catch (e) {
+      debugPrint('❌ Error restoring scroll position: $e');
+    }
+  }
+
+  Future<void> _checkBackgroundTabs() async {
+    final config = _configService.config;
+    if (config == null) return;
+
+    for (int i = 0; i < config.mainIcons.length; i++) {
+      if (i != _selectedIndex &&
+          config.mainIcons[i].linkType != 'sheet_webview') {
+        // Check with delay to avoid overwhelming the system
+        Future.delayed(Duration(seconds: i * 2), () async {
+          if (mounted) {
+            final hasContent = await _checkWebViewHasContent(i);
+            if (!hasContent) {
+              debugPrint(
+                '🔄 Background tab $i needs refresh - will refresh when accessed',
+              );
+              // Mark for refresh when user switches to this tab
+              _loadingStates[i] = true;
+            }
+          }
+        });
+      }
     }
   }
 
@@ -153,33 +311,30 @@ class _MainScreenState extends State<MainScreen>
   void _preserveWebViewState() {
     try {
       final config = _configService.config;
-      if (config == null || _selectedIndex >= config.mainIcons.length) return;
+      if (config == null) return;
 
-      // Save current scroll position and state
+      // Save scroll position and URL for current tab
       final controller = _controllerManager.getController(
         _selectedIndex,
         '',
         context,
       );
-
-      // Inject script to save scroll position
       controller.runJavaScript('''
       try {
-        // Save current scroll position
-        window.savedScrollPosition = {
-          x: window.pageXOffset || document.documentElement.scrollLeft || 0,
-          y: window.pageYOffset || document.documentElement.scrollTop || 0,
+        // Save current state in memory
+        window.savedAppState = {
+          url: window.location.href,
+          scrollX: window.pageXOffset || document.documentElement.scrollLeft || 0,
+          scrollY: window.pageYOffset || document.documentElement.scrollTop || 0,
           timestamp: Date.now()
         };
-        console.log('💾 Scroll position saved:', window.savedScrollPosition);
-      } catch (e) {
-        console.error('❌ Error saving scroll position:', e);
+        console.log('💾 State saved before backgrounding');
+      } catch (error) {
+        console.error('❌ Error saving state:', error);
       }
     ''');
-
-      debugPrint('✅ WebView state preserved for tab $_selectedIndex');
     } catch (e) {
-      debugPrint('❌ Error preserving WebView state: $e');
+      debugPrint('❌ Error preserving state: $e');
     }
   }
 
@@ -199,40 +354,40 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
-void _notifyWebViewReady() {
-  if (!_hasNotifiedSplash) {
-    _hasNotifiedSplash = true;
+  void _notifyWebViewReady() {
+    if (!_hasNotifiedSplash) {
+      _hasNotifiedSplash = true;
 
-    try {
-      final splashManager = Provider.of<SplashStateManager>(
-        context,
-        listen: false,
-      );
-      
-      // NEW: Only notify if we have internet connection
-      final internetService = Provider.of<InternetConnectionService>(
-        context,
-        listen: false,
-      );
-      
-      if (internetService.isConnected) {
-        splashManager.setWebViewReady();
-        debugPrint(
-          '🌐 MainScreen: Notified splash manager that WebView is ready',
+      try {
+        final splashManager = Provider.of<SplashStateManager>(
+          context,
+          listen: false,
         );
 
-        // Start preloading other tabs after splash notification
-        _startPreloadingOtherTabs();
-      } else {
-        debugPrint(
-          '🚫 MainScreen: Skipping WebView ready notification - no internet',
+        // NEW: Only notify if we have internet connection
+        final internetService = Provider.of<InternetConnectionService>(
+          context,
+          listen: false,
         );
+
+        if (internetService.isConnected) {
+          splashManager.setWebViewReady();
+          debugPrint(
+            '🌐 MainScreen: Notified splash manager that WebView is ready',
+          );
+
+          // Start preloading other tabs after splash notification
+          _startPreloadingOtherTabs();
+        } else {
+          debugPrint(
+            '🚫 MainScreen: Skipping WebView ready notification - no internet',
+          );
+        }
+      } catch (e) {
+        debugPrint('❌ MainScreen: Error notifying splash manager: $e');
       }
-    } catch (e) {
-      debugPrint('❌ MainScreen: Error notifying splash manager: $e');
     }
   }
-}
 
   void _startPreloadingOtherTabs() async {
     if (_hasStartedPreloading) return;
@@ -346,59 +501,60 @@ void _notifyWebViewReady() {
     );
   }
 
-@override
-Widget build(BuildContext context) {
-  return Consumer2<ConfigService, InternetConnectionService>(
-    builder: (context, configService, internetService, child) {
-      // NEW: If no internet, show no internet page
-      if (!internetService.isConnected) {
-        return const NoInternetPage();
-      }
+  @override
+  Widget build(BuildContext context) {
+    return Consumer2<ConfigService, InternetConnectionService>(
+      builder: (context, configService, internetService, child) {
+        // NEW: If no internet, show no internet page
+        if (!internetService.isConnected) {
+          return const NoInternetPage();
+        }
 
-      if (!configService.isLoaded) {
-        return const Scaffold(
-          body: Center(
-            child: LoadingWidget(message: "Loading configuration..."),
-          ),
-        );
-      }
-
-      if (configService.error != null) {
-        return Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
-                const SizedBox(height: 16),
-                Text(
-                  'Configuration Error',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Text(
-                    configService.error!,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () => configService.reloadConfig(),
-                  child: const Text('Retry'),
-                ),
-              ],
+        if (!configService.isLoaded) {
+          return const Scaffold(
+            body: Center(
+              child: LoadingWidget(message: "Loading configuration..."),
             ),
-          ),
-        );
-      }
+          );
+        }
 
-      return _buildMainScaffold(configService.config!);
-    },
-  );
-}
+        if (configService.error != null) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 64, color: Colors.red[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Configuration Error',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      configService.error!,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => configService.reloadConfig(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return _buildMainScaffold(configService.config!);
+      },
+    );
+  }
+
   Widget _buildMainScaffold(config) {
     return Scaffold(
       appBar: DynamicAppBar(selectedIndex: _selectedIndex),
@@ -884,11 +1040,11 @@ Widget build(BuildContext context) {
     }
 
     // Location requests
-   // Location requests
-if (request.url.startsWith('get-location://')) {
-  _handleLocationRequest();
-  return NavigationDecision.prevent;
-}
+    // Location requests
+    if (request.url.startsWith('get-location://')) {
+      _handleLocationRequest();
+      return NavigationDecision.prevent;
+    }
 
     // Contacts requests
     if (request.url.startsWith('get-contacts')) {
@@ -945,25 +1101,25 @@ if (request.url.startsWith('get-location://')) {
     return NavigationDecision.navigate;
   }
 
-void _handleToastRequest(String url) {
-  debugPrint('🍞 Toast requested from WebView: $url');
+  void _handleToastRequest(String url) {
+    debugPrint('🍞 Toast requested from WebView: $url');
 
-  try {
-    // Extract message from the URL
-    String message = url.replaceFirst('toast://', '');
+    try {
+      // Extract message from the URL
+      String message = url.replaceFirst('toast://', '');
 
-    // Decode URL encoding if present
-    message = Uri.decodeComponent(message);
+      // Decode URL encoding if present
+      message = Uri.decodeComponent(message);
 
-    // Show the toast message using web scripts (same as WebViewPage)
-    if (mounted && message.isNotEmpty) {
-      final controller = _controllerManager.getController(
-        _selectedIndex,
-        '',
-        context,
-      );
-      
-      controller.runJavaScript('''
+      // Show the toast message using web scripts (same as WebViewPage)
+      if (mounted && message.isNotEmpty) {
+        final controller = _controllerManager.getController(
+          _selectedIndex,
+          '',
+          context,
+        );
+
+        controller.runJavaScript('''
         try {
           console.log('🍞 Toast message received in MainScreen: $message');
           
@@ -1083,14 +1239,17 @@ void _handleToastRequest(String url) {
         }
       ''');
 
-      debugPrint('✅ Enhanced black toast processed via web scripts: $message');
-    } else {
-      debugPrint('❌ Empty toast message');
+        debugPrint(
+          '✅ Enhanced black toast processed via web scripts: $message',
+        );
+      } else {
+        debugPrint('❌ Empty toast message');
+      }
+    } catch (e) {
+      debugPrint('❌ Error handling toast request: $e');
     }
-  } catch (e) {
-    debugPrint('❌ Error handling toast request: $e');
   }
-}
+
   void _handleContinuousBarcodeScanning(String url) {
     debugPrint("Continuous barcode scanning triggered: $url");
 
@@ -1410,48 +1569,50 @@ void _handleToastRequest(String url) {
     ''');
   }
 
-void _handleLocationRequest() async {
-  if (_currentContext == null || _currentController == null) {
-    debugPrint('❌ No context or controller available for location request');
-    return;
+  void _handleLocationRequest() async {
+    if (_currentContext == null || _currentController == null) {
+      debugPrint('❌ No context or controller available for location request');
+      return;
+    }
+
+    debugPrint('🌍 Processing location request silently...');
+
+    try {
+      // NO LOADING DIALOG - just process silently
+      Map<String, dynamic> locationResult =
+          await LocationService().getCurrentLocation();
+      _sendLocationToWebView(locationResult);
+    } catch (e) {
+      debugPrint('❌ Error handling location request: $e');
+      _sendLocationToWebView({
+        'success': false,
+        'error': 'Failed to get location: ${e.toString()}',
+        'errorCode': 'UNKNOWN_ERROR',
+      });
+    }
   }
 
-  debugPrint('🌍 Processing location request silently...');
+  void _sendLocationToWebView(Map<String, dynamic> locationData) {
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
 
-  try {
-    // NO LOADING DIALOG - just process silently
-    Map<String, dynamic> locationResult = await LocationService().getCurrentLocation();
-    _sendLocationToWebView(locationResult);
-  } catch (e) {
-    debugPrint('❌ Error handling location request: $e');
-    _sendLocationToWebView({
-      'success': false,
-      'error': 'Failed to get location: ${e.toString()}',
-      'errorCode': 'UNKNOWN_ERROR',
-    });
-  }
-}
-void _sendLocationToWebView(Map<String, dynamic> locationData) {
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
+    if (controller == null) {
+      debugPrint('❌ No WebView controller available for location result');
+      return;
+    }
 
-  if (controller == null) {
-    debugPrint('❌ No WebView controller available for location result');
-    return;
-  }
+    debugPrint('📱 Sending location data to WebView');
 
-  debugPrint('📱 Sending location data to WebView');
+    final success = locationData['success'] ?? false;
+    final latitude = locationData['latitude'];
+    final longitude = locationData['longitude'];
+    final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
+    final errorCode = locationData['errorCode'] ?? '';
 
-  final success = locationData['success'] ?? false;
-  final latitude = locationData['latitude'];
-  final longitude = locationData['longitude'];
-  final error = (locationData['error'] ?? '').replaceAll('"', '\\"');
-  final errorCode = locationData['errorCode'] ?? '';
-
-  controller.runJavaScript('''
+    controller.runJavaScript('''
     try {
       console.log("📍 Location received: Success=$success");
       
@@ -1504,28 +1665,27 @@ void _sendLocationToWebView(Map<String, dynamic> locationData) {
       console.error("❌ Error handling location result:", error);
     }
   ''');
-}
-
+  }
 
   void _handleLogoutRequest() {
     debugPrint('🚪 Logout requested from WebView');
     _performLogout();
   }
 
-void _performLogout() async {
-  try {
-    final authService = Provider.of<AuthService>(context, listen: false);
-    await authService.logout();
+  void _performLogout() async {
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      await authService.logout();
 
-    debugPrint('✅ User logged out successfully');
+      debugPrint('✅ User logged out successfully');
 
-    // Use web scripts instead of native SnackBar
-    final controller = _controllerManager.getController(
-      _selectedIndex,
-      '',
-      context,
-    );
-    controller.runJavaScript('''
+      // Use web scripts instead of native SnackBar
+      final controller = _controllerManager.getController(
+        _selectedIndex,
+        '',
+        context,
+      );
+      controller.runJavaScript('''
       if (window.ToastManager) {
         window.ToastManager.postMessage('toast://' + encodeURIComponent('Logged out successfully'));
       } else {
@@ -1533,23 +1693,23 @@ void _performLogout() async {
       }
     ''');
 
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-        (route) => false,
-      );
-    }
-  } catch (e) {
-    debugPrint('❌ Error during logout: $e');
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error during logout: $e');
 
-    // Use web scripts instead of native SnackBar
-    if (mounted) {
-      final controller = _controllerManager.getController(
-        _selectedIndex,
-        '',
-        context,
-      );
-      controller.runJavaScript('''
+      // Use web scripts instead of native SnackBar
+      if (mounted) {
+        final controller = _controllerManager.getController(
+          _selectedIndex,
+          '',
+          context,
+        );
+        controller.runJavaScript('''
         const errorMessage = 'Error during logout';
         if (window.AlertManager) {
           window.AlertManager.postMessage('alert://' + encodeURIComponent(errorMessage));
@@ -1557,32 +1717,33 @@ void _performLogout() async {
           window.location.href = 'alert://' + encodeURIComponent(errorMessage);
         }
       ''');
+      }
     }
   }
-}
-void _handleThemeChangeRequest(String url) {
-  String themeMode = 'system';
 
-  if (url.startsWith('dark-mode://')) {
-    themeMode = 'dark';
-  } else if (url.startsWith('light-mode://')) {
-    themeMode = 'light';
-  } else if (url.startsWith('system-mode://')) {
-    themeMode = 'system';
-  }
+  void _handleThemeChangeRequest(String url) {
+    String themeMode = 'system';
 
-  final themeService = Provider.of<ThemeService>(context, listen: false);
-  themeService.updateThemeMode(themeMode);
+    if (url.startsWith('dark-mode://')) {
+      themeMode = 'dark';
+    } else if (url.startsWith('light-mode://')) {
+      themeMode = 'light';
+    } else if (url.startsWith('system-mode://')) {
+      themeMode = 'system';
+    }
 
-  // Use web scripts instead of native SnackBar (same as WebViewPage)
-  final message = 'Theme changed to ${themeMode.toUpperCase()} mode';
-  final controller = _controllerManager.getController(
-    _selectedIndex,
-    '',
-    context,
-  );
-  
-  controller.runJavaScript('''
+    final themeService = Provider.of<ThemeService>(context, listen: false);
+    themeService.updateThemeMode(themeMode);
+
+    // Use web scripts instead of native SnackBar (same as WebViewPage)
+    final message = 'Theme changed to ${themeMode.toUpperCase()} mode';
+    final controller = _controllerManager.getController(
+      _selectedIndex,
+      '',
+      context,
+    );
+
+    controller.runJavaScript('''
     if (window.ToastManager) {
       window.ToastManager.postMessage('toast://' + encodeURIComponent('$message'));
     } else {
@@ -1590,9 +1751,10 @@ void _handleThemeChangeRequest(String url) {
     }
   ''');
 
-  // ✅ KEEP: Notify ALL WebView controllers about theme change
-  _notifyAllControllersThemeChange(themeMode);
-}
+    // ✅ KEEP: Notify ALL WebView controllers about theme change
+    _notifyAllControllersThemeChange(themeMode);
+  }
+
   void _notifyAllControllersThemeChange(String themeMode) {
     // Get the current theme brightness
     final brightness = Theme.of(context).brightness;
@@ -1616,12 +1778,12 @@ void _handleThemeChangeRequest(String url) {
     }
   }
 
- void _sendThemeUpdateToController(
-  WebViewController controller,
-  String theme,
-  int index,
-) {
-  controller.runJavaScript('''
+  void _sendThemeUpdateToController(
+    WebViewController controller,
+    String theme,
+    int index,
+  ) {
+    controller.runJavaScript('''
     try {
       console.log('🎨 Flutter theme change notification received: $theme for tab $index');
       
@@ -1653,7 +1815,7 @@ void _handleThemeChangeRequest(String url) {
       console.error("❌ Error handling Flutter theme update:", error);
     }
   ''');
-}
+  }
 
   void _handleNewWebNavigation(String url) {
     // FIXED: Changed default URL to mobile.erpforever.com
@@ -1771,46 +1933,34 @@ void _handleThemeChangeRequest(String url) {
         _selectedIndex = index;
       });
 
-      // ✅ FIXED: Always ensure the tab is properly initialized
-      _ensureTabInitialized(index);
-
-      // ✅ FIXED: Get the controller and ensure it's properly set up
-      final controller = _controllerManager.getController(
-        index,
-        item.link,
-        context,
-      );
-
-      // ✅ FIXED: Set up the controller if needed
-      _setupTabControllerForPullRefresh(controller, index);
-
-      // ✅ FIXED: Add refresh channel if needed
-      if (_refreshChannelAdded[index] != true) {
-        _addRefreshChannelSafely(controller, index);
-      }
-
-      // ✅ FIXED: Inject pull-to-refresh immediately if the page is already loaded
-      if (_loadingStates[index] == false) {
-        debugPrint(
-          '🔄 Tab $index already loaded, injecting pull-to-refresh immediately...',
-        );
-
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted && _selectedIndex == index) {
-            _injectScrollMonitoring(controller, index);
-            _injectNativePullToRefresh(controller, index);
-            debugPrint('✅ Pull-to-refresh injected for tab $index on switch');
-          }
-        });
-      }
-
-      // Update WebViewService with the active controller
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          WebViewService().updateController(controller, context);
-          debugPrint('✅ WebViewService updated for tab $index');
+      // Check if this tab needs refresh when accessed
+      Future.delayed(Duration(milliseconds: 100), () async {
+        final hasContent = await _checkWebViewHasContent(index);
+        if (!hasContent) {
+          debugPrint('🔄 Tab $index is empty - refreshing');
+          await _refreshTabAtIndex(index);
         }
       });
+    }
+  }
+
+  Future<void> _refreshTabAtIndex(int index) async {
+    try {
+      setState(() {
+        _loadingStates[index] = true;
+      });
+
+      final controller = _controllerManager.getController(index, '', context);
+      await controller.reload();
+
+      debugPrint('✅ Tab $index refresh initiated');
+    } catch (e) {
+      debugPrint('❌ Error refreshing tab $index: $e');
+      if (mounted) {
+        setState(() {
+          _loadingStates[index] = false;
+        });
+      }
     }
   }
 
